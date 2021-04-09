@@ -1,0 +1,12 @@
+name: orbit-dataset
+channels:
+  - pytorch
+  - plotly
+dependencies:
+  - python=3.7.7
+  - pip=20.0.2=py37_3
+  - plotly=4.8.1=py_0
+  - pytorch=1.5.0=py3.7_cuda10.1.243_cudnn7.6.3_0
+  - torchvision=0.6.0=py37_cu101
+  - pip:
+    - thop==0.0.31-2005241907

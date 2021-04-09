@@ -1,0 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT license.
+
+checkpoint/
+*.pyc
+.vscode/
+plots
+scripts/.ipynb_checkpoints
