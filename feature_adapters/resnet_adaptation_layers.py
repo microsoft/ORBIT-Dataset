@@ -79,7 +79,6 @@ class FilmLayer(BaseFilmLayer):
             for layer in range(self.num_layers_per_block):
                 block_param_dict['gamma'].append(self.gammas[block][layer] * self.gamma_regularizers[block][layer] + torch.ones_like(self.gamma_regularizers[block][layer]))
                 block_param_dict['beta'].append(self.betas[block][layer] * self.beta_regularizers[block][layer])
-                num_params += self.num_maps * 2
             block_params.append(block_param_dict)
 
         return block_params
