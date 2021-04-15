@@ -50,7 +50,7 @@ class CNAPSRecogniser(BaseRecogniser):
         self.class_representations = OrderedDict()
 
     def personalise(self, context_set, context_labels, ops_counter=None):
-        context_frames, context_clips_per_video = context_set
+        context_frames, context_paths, context_video_ids = context_set
         
         self.task_representation = self.set_encoder(context_frames)
         self.feature_adapter_params = self.feature_adapter(self.task_representation.cuda(1) if self.args.use_two_gpus else self.task_representation)
@@ -74,7 +74,7 @@ class CNAPSRecogniser(BaseRecogniser):
 
     def forward(self, target_set, test_mode=False):
 
-        target_frames, target_clips_per_video = target_set 
+        target_frames, target_paths, target_video_ids = target_set 
 
         target_features = self._get_features(target_frames)
         target_features = self._pool_features(target_features, test_mode)

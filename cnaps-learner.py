@@ -213,7 +213,7 @@ class MetaLearner:
         
         with torch.no_grad():
             for step, task_dict in enumerate(self.validation_queue.get_tasks()):
-                context_set, context_labels, target_set_by_video, target_labels_by_video = self.unpack_task(task_dict)
+                context_set, context_labels, target_set_by_video, target_labels_by_video = self.unpack_task(task_dict, test_mode=True)
                 
                 self.model.personalise(context_set, context_labels)
 
@@ -248,7 +248,7 @@ class MetaLearner:
 
         with torch.no_grad():
             for step, task_dict in enumerate(self.test_queue.get_tasks()):
-                context_set, context_labels, target_set_by_video, target_labels_by_video = self.unpack_task(task_dict)
+                context_set, context_labels, target_set_by_video, target_labels_by_video = self.unpack_task(task_dict, test_mode=True)
 
                 self.model.personalise(context_set, context_labels, ops_counter=self.ops_counter)
 
@@ -271,34 +271,43 @@ class MetaLearner:
             self.test_evaluator.reset()
 
     def send_to_device(self, data, labels):
-        data = ( data[0].to(self.device), data[1] )
+        data = ( data[0].to(self.device), data[1], data[2] )
         labels = labels.to(self.device)
-        return data, labels
-         
-    def unpack_task(self, task_dict):
+        return data, labels     
+
+    def unpack_task(self, task_dict, test_mode=False):
         task_dict = { k: v.squeeze(0) if isinstance(v, torch.Tensor) else v for k,v in task_dict.items() }
-        context_frames, context_labels, context_paths, context_clips_per_video = task_dict['context_frames'], task_dict['context_labels'], task_dict['context_framepaths'], task_dict['context_clips_per_video']
-        target_frames, target_labels, target_paths, target_clips_per_video = task_dict['target_frames'], task_dict['target_labels'], task_dict['target_framepaths'], task_dict['target_clips_per_video']
+        context_frames, context_labels, context_paths, context_video_ids = task_dict['context_frames'], task_dict['context_labels'], task_dict['context_framepaths'], task_dict['context_video_ids']
+        target_frames, target_labels, target_paths, target_video_ids = task_dict['target_frames'], task_dict['target_labels'], task_dict['target_framepaths'], task_dict['target_video_ids']
 
         context_frames = context_frames.to(self.device)
-        context_set = (context_frames, context_clips_per_video)
+        context_video_ids = context_video_ids.to(self.device)
+        context_paths = np.array(context_paths).reshape(-1, self.args.clip_length)
+        context_set = (context_frames, context_paths, context_video_ids)
         context_labels = context_labels.to(self.device)
+        
+        target_paths = np.array(target_paths).reshape(-1, self.args.clip_length)
 
-        if isinstance(target_labels, list): # test_mode; group target set by videos
-            target_set_by_video, target_labels_by_video, idx = [], [], 0
-            for i, video_target_labels in enumerate(target_labels):
-                num_clips_per_video = target_clips_per_video[i]
-                target_set_by_video.append( (target_frames[idx:idx+num_clips_per_video], num_clips_per_video) )
-                target_labels_by_video.append( video_target_labels.squeeze(0) )
-                idx += num_clips_per_video
+        if test_mode: # test_mode; group target set by videos
+            target_set_by_video, target_labels_by_video = [], []
+            unique_video_ids = torch.unique(target_video_ids)
+            for video_id in unique_video_ids:
+                idxs = target_video_ids == video_id
+                video_clips = target_frames[idxs]
+                video_paths = target_paths[idxs]
+                video_labels = target_labels[idxs]
+                video_ids = target_video_ids[idxs]
+                target_set_by_video.append( (video_clips, video_paths, video_ids) )
+                target_labels_by_video.append( video_labels )
             return context_set, context_labels, target_set_by_video, target_labels_by_video
         else:
             target_frames = target_frames.to(self.device)
-            target_set = (target_frames, target_clips_per_video)
+            target_video_ids = target_video_ids.to(self.device)
+            target_set = (target_frames, target_paths, target_video_ids)
             target_labels = target_labels.to(self.device)
 
             return context_set, context_labels, target_set, target_labels
-
+     
     def save_checkpoint(self, epoch):
         torch.save({
             'epoch': epoch,

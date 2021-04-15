@@ -45,7 +45,7 @@ class Recogniser(BaseRecogniser):
 
     def forward(self, x, ops_counter=None, test_mode=False):
 
-        frames, clips_per_video = x
+        frames, paths, video_ids = x
         features = self._get_features(frames, not test_mode)
         features = self._pool_features(features, test_mode)
         logits = self.classifier(features)

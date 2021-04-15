@@ -33,14 +33,14 @@ class ORBITDataset(Dataset):
     def load_all_users(self):
 
         self.users, self.obj2vids, self.obj2name, self.obj2base = [], [], [], []
-        self.user2objs = {}
+        self.user2objs, self.video2id = {}, {}
         mode = os.path.basename(self.root)
         with open(os.path.join('data', 'orbit_{:}_object_cluster_labels.json'.format(mode))) as in_file:
             vid2base = json.load(in_file)
         self.base_classes = sorted(set(vid2base.values()))
         obj2base = self.get_label_map(self.base_classes)
 
-        obj_id = 0
+        obj_id, vid_id = 0, 0
         users = [u for u in os.listdir(self.root) if os.path.isdir(os.path.join(self.root, u))]
         for user in sorted(users): # users
             self.users.append(user)
@@ -57,6 +57,8 @@ class ORBITDataset(Dataset):
                         obj_base = obj2base [ vid2base[vid] ]
                         vid_path = os.path.join(type_path, vid)
                         videos_by_type[video_type].append(vid_path)
+                        self.video2id[vid_path] = vid_id
+                        vid_id += 1
                 
                 self.obj2vids.append(videos_by_type)
                 self.obj2name.append(obj)
@@ -104,15 +106,15 @@ class ORBITDataset(Dataset):
             return random.sample(videos, max_shots)
     
     def get_video_data(self, videos, num_clips):
-        frames_list, framepaths_list, num_clips_per_video = [], [], []
+        frames_list, framepaths_list, video_ids = [], [], []
         for video_path in videos:
             frame_paths = sorted(glob.glob(os.path.join(video_path, "*.jpg")))
             sampled_frames, sampled_framepaths, vid_num_clips = self.sample_frames(frame_paths, num_clips)
             frames_list.extend(sampled_frames)
             framepaths_list.extend(sampled_framepaths)
-            num_clips_per_video.append(vid_num_clips)
+            video_ids.extend([self.video2id[video_path] for _ in range(vid_num_clips)])
         
-        return frames_list, framepaths_list, num_clips_per_video
+        return frames_list, framepaths_list, video_ids
     
     def get_video_label(self, obj, label_map):
         return label_map[ obj ]
@@ -168,35 +170,24 @@ class ORBITDataset(Dataset):
                 sampled_frame_paths.extend( subsampled_frame_paths[idx-self.clip_length:idx] )
             return sampled_frame_paths, num_clips
 
-    def prepare_task(self, frames, framepaths, labels, clips_per_video, test_mode=False):
+    def prepare_task(self, frames, framepaths, labels, video_ids, test_mode=False):
         frames = torch.stack(frames)
         framepaths = np.array(framepaths)
         labels = torch.tensor(labels)
+        video_ids = torch.tensor(video_ids)
         
         if test_mode:
-            idx, flat_clips_per_video, frame_labels = 0, [], []
-            for object_videos in clips_per_video: # currently grouped by object
-                for num_clips_per_video in object_videos:
-                    frame_labels.append( labels[idx].repeat( num_clips_per_video * self.clip_length) )
-                    flat_clips_per_video.append( num_clips_per_video )
-                    idx += num_clips_per_video
-            return frames, list(framepaths.reshape((-1))), frame_labels, flat_clips_per_video
+            return frames, list(framepaths.reshape((-1))), labels, video_ids
         else:
-            return self.shuffle_task(frames, framepaths, labels, clips_per_video)
-    
-    def flatten_task(self, frames, framepaths, labels, clips_per_video):
-        frames = frames.flatten(end_dim=1)
-        framepaths = framepaths.reshape((-1))
-        labels = labels.view(-1,1).repeat(1, self.clip_length).view(-1)
-        return frames, framepaths, labels, clips_per_video
+            return self.shuffle_task(frames, framepaths, labels, video_ids)
  
-    def shuffle_task(self, frames, framepaths, labels, clips_per_video):
+    def shuffle_task(self, frames, framepaths, labels, video_ids):
         new_order = torch.randperm(len(frames))
         frames = frames[new_order]
         framepaths = framepaths[new_order.numpy()]
         labels = labels[new_order]
-        clips_per_video = [] #shuffled tasks don't need clips_per_video markers
-        return frames, list(framepaths.reshape((-1))), labels, clips_per_video
+        video_ids = video_ids[new_order]
+        return frames, list(framepaths.reshape((-1))), labels, video_ids
     
     def get_transformations(self):
         return it.orbit_benchmark_transform
@@ -246,12 +237,12 @@ class UserEpisodicORBITDataset(ORBITDataset):
         context_frames, target_frames = [], []
         context_framepaths, target_framepaths = [], []
         context_labels, target_labels = [], []
-        context_clips_per_video, target_clips_per_video = [], []
+        context_video_ids, target_video_ids = [], []
         for i, obj in enumerate(selected_objects):
             context, target = self.sample_shots(self.obj2vids[obj])
 
-            cf, cfp, ccpv = self.get_video_data(context, self.context_num_clips)
-            tf, tfp, tcpv = self.get_video_data(target, self.target_num_clips)
+            cf, cfp, cvi = self.get_video_data(context, self.context_num_clips)
+            tf, tfp, tvi = self.get_video_data(target, self.target_num_clips)
             l = self.get_video_label(obj, label_map)
 
             context_frames.extend(cf)
@@ -263,11 +254,11 @@ class UserEpisodicORBITDataset(ORBITDataset):
             context_labels.extend([l for _ in range(len(cf))])
             target_labels.extend([l for _ in range(len(tf))])
             
-            context_clips_per_video.append(ccpv)
-            target_clips_per_video.append(tcpv)
+            context_video_ids.extend(cvi)
+            target_video_ids.extend(tvi)
 
-        context_frames, context_framepaths, context_labels, context_clips_per_video = self.prepare_task(context_frames, context_framepaths, context_labels, context_clips_per_video)
-        target_frames, target_framepaths, target_labels, target_clips_per_video = self.prepare_task(target_frames, target_framepaths, target_labels, target_clips_per_video, test_mode=self.test_mode) 
+        context_frames, context_framepaths, context_labels, context_video_ids = self.prepare_task(context_frames, context_framepaths, context_labels, context_video_ids)
+        target_frames, target_framepaths, target_labels, target_video_ids = self.prepare_task(target_frames, target_framepaths, target_labels, target_video_ids, test_mode=self.test_mode) 
        
         task_dict = { 
                 'context_frames' : context_frames,
@@ -276,8 +267,8 @@ class UserEpisodicORBITDataset(ORBITDataset):
                 'target_labels' : target_labels,
                 'context_framepaths' : context_framepaths,
                 'target_framepaths' : target_framepaths,
-                'context_clips_per_video' : context_clips_per_video,
-                'target_clips_per_video' : target_clips_per_video
+                'context_video_ids' : context_video_ids,
+                'target_video_ids' : target_video_ids
         }
 
         return task_dict
@@ -324,12 +315,12 @@ class ObjectEpisodicORBITDataset(ORBITDataset):
         context_frames, target_frames = [], []
         context_framepaths, target_framepaths = [], []
         context_labels, target_labels = [], []
-        context_clips_per_video, target_clips_per_video = [], []
+        context_video_ids, target_video_ids = [], []
         for i, obj in enumerate(selected_objects):
             context, target = self.sample_shots(self.obj2vids[obj])
 
-            cf, cfp, ccpv = self.get_video_data(context, self.context_num_clips)
-            tf, tfp, tcpv = self.get_video_data(target, self.target_num_clips)
+            cf, cfp, cvi = self.get_video_data(context, self.context_num_clips)
+            tf, tfp, tvi = self.get_video_data(target, self.target_num_clips)
             l = self.get_video_label(obj, label_map)
 
             context_frames.extend(cf)
@@ -341,11 +332,11 @@ class ObjectEpisodicORBITDataset(ORBITDataset):
             context_labels.extend([l for _ in range(len(cf))])
             target_labels.extend([l for _ in range(len(tf))])
             
-            context_clips_per_video.append(ccpv)
-            target_clips_per_video.append(tcpv)
+            context_video_ids.extend(cvi)
+            target_video_ids.extend(tvi)
 
-        context_frames, context_framepaths, context_labels, context_clips_per_video = self.prepare_task(context_frames, context_framepaths, context_labels, context_clips_per_video)
-        target_frames, target_framepaths, target_labels, target_clips_per_video = self.prepare_task(target_frames, target_framepaths, target_labels, target_clips_per_video, test_mode=self.test_mode) 
+        context_frames, context_framepaths, context_labels, context_video_ids = self.prepare_task(context_frames, context_framepaths, context_labels, context_video_ids)
+        target_frames, target_framepaths, target_labels, target_video_ids = self.prepare_task(target_frames, target_framepaths, target_labels, target_video_ids, test_mode=self.test_mode) 
        
         task_dict = { 
                 'context_frames' : context_frames,
@@ -354,8 +345,8 @@ class ObjectEpisodicORBITDataset(ORBITDataset):
                 'target_labels' : target_labels,
                 'context_framepaths' : context_framepaths,
                 'target_framepaths' : target_framepaths,
-                'context_clips_per_video' : context_clips_per_video,
-                'target_clips_per_video' : target_clips_per_video
+                'context_video_ids' : context_video_ids,
+                'target_video_ids' : target_video_ids
         }
 
         return task_dict
