@@ -52,6 +52,8 @@ The code was authored by Daniela Massiceti and built using PyTorch 1.5.0 and Pyt
    ```
 
    Alternatively, the train/validation/test ZIPs can be manually downloaded [here](https://city.figshare.com/articles/dataset/_/14294597). Each should be unzipped as a separate folder into `<folder/to/save/dataset>`. Use `scripts/resize_videos.py` to re-size the frames.
+
+   Note, if you are using Windows (or WSL) you will need to set `WORKERS=0` in `data/queues.py` as multi-threaded data loading is not supported. You will also need to [enable longer file paths](https://docs.microsoft.com/en-us/windows/win32/fileio/maximum-file-path-limitation#enable-long-paths-in-windows-10-version-1607-and-later) as some file names in the dataset are longer than the system limit.
    
 4. Summarize dataset statistics
    ```
