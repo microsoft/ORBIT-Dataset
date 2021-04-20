@@ -41,7 +41,7 @@ class BaseFilmLayer(nn.Module):
         self.num_maps = num_maps
         self.num_blocks = num_blocks
         self.num_layers_per_block = 2
-        self.num_generated_params = 0
+        self.num_params = 0
     
     def regularization_term(self):
         l2_term = 0
@@ -55,6 +55,10 @@ class FilmLayer(BaseFilmLayer):
     def __init__(self, num_maps, num_blocks, task_dim=None):
         BaseFilmLayer.__init__(self, num_maps, num_blocks)
 
+        self._init_layer()
+
+    def _init_layer(self):
+        self.num_params = 0
         self.gammas, self.gamma_regularizers = nn.ModuleList(), nn.ModuleList()
         self.betas, self.beta_regularizers = nn.ModuleList(), nn.ModuleList()
 
@@ -62,6 +66,7 @@ class FilmLayer(BaseFilmLayer):
             gammas, gamma_regularizers = nn.ParameterList(), nn.ParameterList()
             betas, beta_regularizers = nn.ParameterList(), nn.ParameterList()
             for layer in range(self.num_layers_per_block):
+                self.num_params += 2 * self.num_maps
                 gammas.append(nn.Parameter(torch.ones(self.num_maps), requires_grad=True))
                 gamma_regularizers.append(torch.nn.Parameter(torch.nn.init.normal_(torch.empty(self.num_maps), 0, 0.001), requires_grad=True))
 
@@ -96,7 +101,7 @@ class FilmLayerGenerator(BaseFilmLayer):
             gamma_generators, gamma_regularizers = nn.ModuleList(), nn.ParameterList()
             beta_generators, beta_regularizers = nn.ModuleList(), nn.ParameterList()
             for layer in range(self.num_layers_per_block):
-                self.num_generated_params = 2 * self.num_maps
+                self.num_params += 2 * self.num_maps
                 gamma_generators.append(self._make_layer(self.task_dim, self.num_maps))
                 gamma_regularizers.append(torch.nn.Parameter(torch.nn.init.normal_(torch.empty(self.num_maps), 0, 0.001), requires_grad=True))
 

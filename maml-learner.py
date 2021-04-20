@@ -28,11 +28,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE. 
 """
 
-import random
-
 import os
 import time
 import torch
+import random
+import numpy as np
 import torch.backends.cudnn as cudnn
 
 from models import Recogniser
@@ -134,11 +134,17 @@ class GradientMetaLearner:
                     fastmodel_param.copy_(param.clone().detach())
                     fastmodel_param.grad.zero_()
 
-    def init_classifier(self, model, num_classes, ops_counter=None):
+    def init_task_specific_params(self, model, num_classes, ops_counter=None):
         # add classifier to model
         model._init_classifier(num_classes, init_zeros=True, ops_counter=ops_counter)
         model.classifier.to(self.device)
         self.zero_grads(model.classifier)
+
+        # add film layers to model
+        if self.args.adapt_features:
+            model._init_film_layers()
+            model.feature_adapter.to(self.device)
+            self.zero_grads(model.feature_adapter)
 
     def init_evaluators(self):
         self.train_metrics = ['frame_acc']
@@ -215,7 +221,7 @@ class GradientMetaLearner:
         self.reset_fast_model()
         
         num_classes = len(torch.unique(target_labels))
-        self.init_classifier(self.fast_model, num_classes)
+        self.init_task_specific_params(self.fast_model, num_classes)
 
         # do inner loop, updates self.fast_model
         self.personalise(context_set, context_labels, self.fast_model)
@@ -242,15 +248,23 @@ class GradientMetaLearner:
         return target_loss
     
     def batchify_set(self, context_set, context_labels, batch_size = 200):
-        frames, clips_per_video = context_set
-        num_frames = len(frames)
+        
+        frames, paths, video_ids = context_set
+        num_clips = len(frames)
 
-        num_batches = num_frames // batch_size if num_frames > batch_size else 1
+        # batch_size is number of clips (of length self.args.clip_length) per batch
+        num_batches = num_clips // batch_size
+        batch_sizes = [batch_size]*num_batches
+
+        last_batch_size = num_clips % batch_size
+        batch_sizes.append(last_batch_size)
+
         batches, batch_labels = [], []
-        for i in range(num_batches):
+        for i,bz in enumerate(batch_sizes):
             idx = i*batch_size
-            batches.append((frames[idx:idx+batch_size], clips_per_video)) 
-            batch_labels.append(context_labels[idx:idx+batch_size])
+            batch_range = range(idx,idx+bz)
+            batches.append((frames[batch_range], paths[batch_range], video_ids[batch_range])) 
+            batch_labels.append(context_labels[batch_range])
 
         return iter(zip(batches, batch_labels))
 
@@ -302,7 +316,7 @@ class GradientMetaLearner:
 
             # initialise classifier
             num_classes = len(torch.unique(context_labels))
-            self.init_classifier(self.fast_model, num_classes)
+            self.init_task_specific_params(self.fast_model, num_classes)
 
             # take a few grad steps using context set
             self.personalise(context_set, context_labels, self.fast_model)
@@ -339,7 +353,6 @@ class GradientMetaLearner:
         
         self.model.load_state_dict(torch.load(path, map_location=self.map_location), strict=False)
         self.fast_model.load_state_dict(torch.load(path, map_location=self.map_location), strict=False)
-       
         
         self.ops_counter.set_base_params(self.model)
         
@@ -351,7 +364,7 @@ class GradientMetaLearner:
 
             # initialise classifier
             num_classes = len(torch.unique(context_labels))
-            self.init_classifier(self.fast_model, num_classes, ops_counter=self.ops_counter)
+            self.init_task_specific_params(self.fast_model, num_classes, ops_counter=self.ops_counter)
 
             # inner grad update - take a few grad steps using context set
             self.personalise(context_set, context_labels, self.fast_model, ops_counter=self.ops_counter)
@@ -365,6 +378,8 @@ class GradientMetaLearner:
             del self.fast_model.classifier
             
             if (step+1) % self.args.test_tasks_per_user == 0:
+                _, current_user_stats = self.test_evaluator.get_mean_stats(current_user=True)
+                print_and_log(self.logfile, 'test user {0:}/{1:} stats: {2:}'.format(self.test_evaluator.current_user+1, self.test_queue.num_users, stats_to_str(current_user_stats)))
                 self.test_evaluator.next_user()
 
         stats_per_user, stats_per_video = self.test_evaluator.get_mean_stats()
@@ -399,7 +414,7 @@ class GradientMetaLearner:
                 idxs = target_video_ids == video_id
                 video_clips = target_frames[idxs]
                 video_paths = target_paths[idxs]
-                video_labels = target_labels[idxs]
+                video_labels = target_labels[idxs].view(-1,1).repeat(1, self.args.clip_length).view(-1)
                 video_ids = target_video_ids[idxs]
                 target_set_by_video.append( (video_clips, video_paths, video_ids) )
                 target_labels_by_video.append( video_labels )

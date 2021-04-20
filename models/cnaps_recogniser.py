@@ -66,7 +66,6 @@ class CNAPSRecogniser(BaseRecogniser):
             if self.args.adapt_features:
                 ops_counter.compute_macs(self.set_encoder, context_frames)
                 ops_counter.compute_macs(self.feature_adapter, self.task_representation.cuda(1) if self.args.use_two_gpus else self.task_representation)
-                ops_counter.add_params(self.feature_adapter.num_generated_params)
             ops_counter.compute_macs(self.feature_extractor, context_frames.cuda(1) if self.args.use_two_gpus else context_frames, self.feature_adapter_params)
             ops_counter.add_macs(context_features.size(0) * context_features.size(1) * self.args.clip_length) # MACs in _pool_features
             ops_counter.compute_macs(self.classifier_adapter, self.class_representations)

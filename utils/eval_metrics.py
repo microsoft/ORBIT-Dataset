@@ -111,15 +111,15 @@ class TestEvaluator(Evaluator):
         self.all_frame_predictions, self.all_frame_labels = [[]], [[]]
         self.all_video_predictions, self.all_video_labels = [[]], [[]]
     
-    def get_mean_stats(self):
+    def get_mean_stats(self, current_user=False):
        
         user_scores = { stat: [] for stat in self.stats_to_compute }
         video_scores = { stat: [] for stat in self.stats_to_compute }
         frame_preds_by_video, frame_labels_by_video, video_preds_by_video, video_labels_by_video = [], [], [], []
 
-        num_users = self.current_user
+        users_to_average = [self.current_user] if current_user else range(self.current_user)
         for stat in self.stats_to_compute:
-            for user in range(num_users):
+            for user in users_to_average:
                 user_frame_preds = self.all_frame_predictions[user] # [ list_of_video_1_preds, ..., list_of_video_N_preds ]
                 user_frame_labels = self.all_frame_labels[user] # [ list_of_video_1_labels, ..., list_of_video_N_labels ]
                 user_video_preds = self.all_video_predictions[user] # [ video_1_pred, ..., video_N_preds ]
@@ -128,9 +128,7 @@ class TestEvaluator(Evaluator):
                 # loop over target videos for current user
                 if stat in self.frame_stat_fns: # if frame-based metric
                     user_video_scores = [ self.frame_stat_fns[stat](l, p) for (l,p) in zip(user_frame_labels, user_frame_preds) ] # [ video_1_frame_acc, ..., video_N_frame_acc ]
-                elif stat in self.video_stat_fns: # if video-based metric
-                  
-                    # loop over target videos for current user
+                elif stat in self.video_stat_fns: # if video-based metric 
                     user_video_scores = [ self.video_stat_fns[stat](l, p) for (l,p) in zip(user_video_labels, user_video_preds) ] # [ video_1_video_acc, ..., video_N_video_acc ]
 
                 user_mean = np.mean(user_video_scores) # compute mean over target videos for current user

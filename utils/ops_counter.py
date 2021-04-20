@@ -11,8 +11,18 @@ class OpsCounter():
 
     def set_base_params(self, base_model):
         self.base_params_counter = 0
-        for param in base_model.parameters():
+        
+        # feature extractor params
+        for param in base_model.feature_extractor.parameters():
             self.base_params_counter += param.numel()
+
+        if base_model.args.adapt_features:
+            # feature adapter params
+            self.base_params_counter += base_model.feature_adapter.num_params
+            # set encoder params
+            if hasattr(base_model, 'set_encoder'):
+                for param in base_model.set_encoder.parameters():
+                    self.base_params_counter += param.numel()
 
     def add_macs(self, num_macs):
         self.task_mac_counter += num_macs

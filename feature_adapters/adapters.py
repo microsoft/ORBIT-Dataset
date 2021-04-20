@@ -38,7 +38,7 @@ class FilmAdapter(nn.Module):
         self.task_dim = task_dim
         self.num_target_layers = len(self.num_maps)
         self.layer = layer
-        self.num_generated_params = 0
+        self.num_params = 0
         self.layers = self.get_layers()
 
     def get_layers(self):
@@ -51,8 +51,12 @@ class FilmAdapter(nn.Module):
                     task_dim=self.task_dim
                 )
             )
-            self.num_generated_params += layers[-1].num_generated_params
+            self.num_params += layers[-1].num_params
         return layers
+
+    def _init_layers(self):
+        for layer in range(self.num_target_layers):
+            self.layers[layer]._init_layer()
 
     def forward(self, x):
         return [self.layers[layer](x) for layer in range(self.num_target_layers)]

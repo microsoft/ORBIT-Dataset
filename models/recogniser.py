@@ -56,7 +56,7 @@ class Recogniser(BaseRecogniser):
             ops_counter.compute_macs(self.classifier, features)
 
         return logits
-    
+
     def _init_classifier(self, way, init_zeros=False, ops_counter=None):
         self.classifier = nn.Linear(self.feature_extractor.output_size, way)
         if init_zeros:
@@ -68,6 +68,9 @@ class Recogniser(BaseRecogniser):
         
         if ops_counter:
             ops_counter.add_params(self.classifier.weight.numel() + self.classifier.bias.numel())
+
+    def _init_film_layers(self):
+        self.feature_adapter._init_layers()
 
     def _get_features(self, x, context=False):
 

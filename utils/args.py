@@ -102,5 +102,5 @@ def parse_args(mode='default'):
 
 def verify_args(mode, args): 
     if 'gradient' in mode or 'finetune' in mode:
-        if not args.learn_extractor and not args.adapt_features:
+        if 'train' in args.mode and not args.learn_extractor and not args.adapt_features:
             sys.exit('error: at least one of "--learn_extractor" and "--adapt_features" must be used')

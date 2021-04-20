@@ -269,6 +269,8 @@ class MetaLearner:
                 self.model.class_representations.clear() # reset task's params
 
                 if (step+1) % self.args.test_tasks_per_user == 0:
+                    _, current_user_stats = self.test_evaluator.get_mean_stats(current_user=True)
+                    print_and_log(self.logfile, 'test user {0:}/{1:} stats: {2:}'.format(self.test_evaluator.current_user+1, self.test_queue.num_users, stats_to_str(current_user_stats)))
                     self.test_evaluator.next_user()
                     
             stats_per_user, stats_per_video = self.test_evaluator.get_mean_stats()
@@ -303,7 +305,7 @@ class MetaLearner:
                 idxs = target_video_ids == video_id
                 video_clips = target_frames[idxs]
                 video_paths = target_paths[idxs]
-                video_labels = target_labels[idxs]
+                video_labels = target_labels[idxs].view(-1,1).repeat(1, self.args.clip_length).view(-1)
                 video_ids = target_video_ids[idxs]
                 target_set_by_video.append( (video_clips, video_paths, video_ids) )
                 target_labels_by_video.append( video_labels )
