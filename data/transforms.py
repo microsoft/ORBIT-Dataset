@@ -9,11 +9,11 @@ import torchvision.transforms as transforms
 """ Pre-processing transforms for ORBIT benchmark dataset.
 """
 
-orbit_benchmark_normalize = transforms.Normalize(mean=[0.500, 0.436, 0.396], std=[0.145, 0.143, 0.138]) # 84
+imagenet_normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 
 orbit_benchmark_transform = transforms.Compose([
     lambda x : PIL.Image.open(x),
     transforms.ToTensor(),
-    orbit_benchmark_normalize
+    imagenet_normalize
 ])
 

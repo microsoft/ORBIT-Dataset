@@ -74,4 +74,3 @@ class DenseResidualBlock(nn.Module):
         if x.shape[-1] == out.shape[-1]:
             out += identity
         return out
-

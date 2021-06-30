@@ -129,11 +129,11 @@ class BasicBlockFilm(nn.Module):
 
 
 class ResNet(nn.Module):
-    def __init__(self, block, layers, bn_fn):
+    def __init__(self, block, layers, bn_fn, initial_pool=True, conv1_kernel_size=7):
         super(ResNet, self).__init__()
-        self.initial_pool = False
+        self.initial_pool = initial_pool # False for 84x84
         self.inplanes = self.curr_planes = 64
-        self.conv1 = nn.Conv2d(3, self.curr_planes, kernel_size=5, stride=2, padding=1, bias=False)
+        self.conv1 = nn.Conv2d(3, self.curr_planes, kernel_size=conv1_kernel_size, stride=2, padding=1, bias=False)
         self.bn1 = bn_fn(self.curr_planes)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
@@ -168,7 +168,7 @@ class ResNet(nn.Module):
 
     def _flatten(self, x):
         sz = x.size()
-        return x.view(-1, sz[-3], sz[-2], sz[-1])
+        return x.view(-1, sz[-3], sz[-2], sz[-1]) if x.dim() >=5 else x
 
     def forward(self, x, param_dict=None):
         x = self._flatten(x)
@@ -192,19 +192,18 @@ class ResNet(nn.Module):
     def output_size(self):
         return 512
 
-
 class FilmResNet(ResNet):
     """
     Wrapper object around BasicBlockFilm that constructs a complete ResNet with FiLM layer adaptation. Inherits from
     ResNet object, and works with identical logic.
     """
 
-    def __init__(self, block, layers, bn_fn):
-        ResNet.__init__(self, block, layers, bn_fn)
+    def __init__(self, block, layers, bn_fn, initial_pool=True, conv1_kernel_size=7):
+        ResNet.__init__(self, block, layers, bn_fn, initial_pool, conv1_kernel_size)
         self.layers = layers
 
-    def _get_adaptation_layer(self, generator=False):
-        if generator:
+    def _get_adaptation_layer(self, generatable=False):
+        if generatable:
             return FilmLayerGenerator
         else:
             return FilmLayer
@@ -215,7 +214,6 @@ class FilmResNet(ResNet):
                 'num_blocks_per_layer' : [len(self.layer1), len(self.layer2), len(self.layer3), len(self.layer4)]
                 }
         return param_dict
-
 
     def forward(self, x, param_dict):
         """
@@ -247,13 +245,15 @@ class FilmResNet(ResNet):
 
         return x
 
-def resnet_18(pretrained=False, pretrained_model_path=None, batch_norm='basic', **kwargs):
+def resnet_18(pretrained=False, pretrained_model_path=None, batch_norm='basic', with_film=False, **kwargs):
     """
         Constructs a ResNet-18 model.
     """
     nl = get_normalisation_layer(batch_norm)
-
-    model = ResNet(BasicBlock, [2, 2, 2, 2], nl, **kwargs)
+    if with_film:
+        model = FilmResNet(BasicBlockFilm, [2, 2, 2, 2], nl, **kwargs)
+    else:
+        model = ResNet(BasicBlock, [2, 2, 2, 2], nl, **kwargs)
 
     if pretrained:
         ckpt_dict = torch.load(pretrained_model_path)
@@ -261,13 +261,15 @@ def resnet_18(pretrained=False, pretrained_model_path=None, batch_norm='basic', 
 
     return model
 
-def film_resnet_18(pretrained=False, pretrained_model_path=None, batch_norm='eval', **kwargs):
+def resnet_18_84(pretrained=False, pretrained_model_path=None, batch_norm='basic', with_film=False, **kwargs):
     """
-        Constructs a FiLM adapted ResNet-18 model.
+        Constructs a ResNet-18 model for 84 x 84 images.
     """
     nl = get_normalisation_layer(batch_norm)
-
-    model = FilmResNet(BasicBlockFilm, [2, 2, 2, 2], nl, **kwargs)
+    if with_film:
+        model = FilmResNet(BasicBlockFilm, [2, 2, 2, 2], nl, initial_pool=False, conv1_kernel_size=5, **kwargs)
+    else:
+        model = ResNet(BasicBlock, [2, 2, 2, 2], nl, initial_pool=False, conv1_kernel_size=5, **kwargs)
 
     if pretrained:
         ckpt_dict = torch.load(pretrained_model_path)

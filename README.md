@@ -52,8 +52,6 @@ The code was authored by Daniela Massiceti and built using PyTorch 1.5.0 and Pyt
    ```
 
    Alternatively, the train/validation/test ZIPs can be manually downloaded [here](https://city.figshare.com/articles/dataset/_/14294597). Each should be unzipped as a separate folder into `<folder/to/save/dataset>`. Use `scripts/resize_videos.py` to re-size the frames.
-
-   Note, if you are using Windows (or WSL) you will need to set `WORKERS=0` in `data/queues.py` as multi-threaded data loading is not supported. You will also need to [enable longer file paths](https://docs.microsoft.com/en-us/windows/win32/fileio/maximum-file-path-limitation#enable-long-paths-in-windows-10-version-1607-and-later) as some file names in the dataset are longer than the system limit.
    
 4. Summarize dataset statistics
    ```
@@ -68,17 +66,18 @@ The following scipts run the baseline models on the Clutter Video Evaluation (CL
 
 The baselines were run on 2x Dell Nvidia Tesla V100 32GB GPU. To run on one GPU, remove the `use_two_gpus` flag. To reduce memory requirement, reduce the `clip_length`, `train_context_num_clips`, `train_target_num_clips`, or `test_context_num_clips` flags. For other arguments, see `utils/args.py`. For all other implementation details see Section 5 and Appendix F in the paper.
 
-Note, remember to activate the conda environment (`conda activate orbit-dataset`) or virtual environment.
+Note, remember to activate the conda environment (`conda activate orbit-dataset`) or virtual environment. Also, if you are using Windows (or WSL) you will need to set `WORKERS=0` in `data/queues.py` as multi-threaded data loading is not supported. You will also need to [enable longer file paths](https://docs.microsoft.com/en-us/windows/win32/fileio/maximum-file-path-limitation#enable-long-paths-in-windows-10-version-1607-and-later) as some file names in the dataset are longer than the system limit.
 
 ## CNAPs
 Implementation of model-based few-shot learner [CNAPs](https://arxiv.org/abs/1906.07697) (Requeima*, Gordon*, Bronskill* et al., _NeurIPS 2019_).
 
 ```
-python3 cnaps-learner.py --data_path <folder/to/save/dataset>/orbit_benchmark_84 \
+python3 cnaps-learner.py --data_path <folder/to/save/dataset>/orbit_benchmark_84 --frame_size 84 \
                          --context_video_type clean --target_video_type clutter \
                          --classifier versa --adapt_features \
                          --learn_extractor \
-                         --use_two_gpus # parallelizes model over two GPUs.
+                         --train_object_cap 10 --with_train_shot_caps \
+                         --use_two_gpus 
 ```
 
 ## ProtoNets
@@ -86,37 +85,40 @@ python3 cnaps-learner.py --data_path <folder/to/save/dataset>/orbit_benchmark_84
 Implementation of metric-based few-shot learner [ProtoNets](https://arxiv.org/abs/1703.05175) (Snell et al., _NeurIPS 2017_).
 
 ```
-python3 protonet-learner.py --data_path <folder/to/save/dataset>/orbit_benchmark_84  \
+python3 protonet-learner.py --data_path <folder/to/save/dataset>/orbit_benchmark_84 --frame_size 84 \
                             --context_video_type clean --target_video_type clutter \
                             --classifier proto \
                             --learn_extractor \
-                            --use_two_gpus # parallelizes model over two GPUs
+                            --train_object_cap 10 --with_train_shot_caps \
+                            --use_two_gpus
 ```
 
 ## MAML
 
 Implementation of optimization-based few-shot learner [MAML](https://arxiv.org/abs/1703.03400) (Finn et al., _ICML 2017_).
 ```
-python3 maml-learner.py --data_path <folder/to/save/dataset>/orbit_benchmark_84 \
+python3 maml-learner.py --data_path <folder/to/save/dataset>/orbit_benchmark_84 --frame_size 84 \
                         --context_video_type clean --target_video_type clutter \
                         --learn_extractor \
+                        --train_object_cap 10 --with_train_shot_caps \v
                         --learning_rate 0.00001 --inner_learning_rate 0.001 \
                         --num_grad_steps 15 \
-                        --use_two_gpus # runs validation/testing on a second GPU
+                        --use_two_gpus
 ```
 
 ## FineTuner
 
 Implementation of transfer learning few-shot learner based on [Tian*, Wang* et al., 2020](https://arxiv.org/abs/2003.11539) and [Chen et al., 2020](https://arxiv.org/abs/2003.04390).
 ```
-python3 finetune-learner.py --data_path <folder/to/save/dataset>/orbit_benchmark_84 \
+python3 finetune-learner.py --data_path <folder/to/save/dataset>/orbit_benchmark_84 --frame_size 84 \
                             --context_video_type clean --target_video_type clutter \
                             --learn_extractor \
+                            --train_object_cap 10 --with_train_shot_caps \
                             --inner_learning_rate 0.1 \
                             --num_grad_steps 50 \
-                            --use_two_gpus # runs validation/testing on a second GPU
+                            --use_two_gpus
 ```
-Note, training the FineTuner baseline uses object cluster (raather than object) labels. These can be found in `data/orbit_{train,validation,test}_object_clusters_labels.json` and `data/object_clusters_benchmark.txt`.
+Note, the FineTuner baseline first trains a generic classifier using object cluster (rather than raw object) labels. These clusters can be found in `data/orbit_{train,validation,test}_object_clusters_labels.json` and `data/object_clusters_benchmark.txt`. During validation/testing, a new linear classification layer is appended to the generic feature extractor, and the model is fine-tuned on each task using the raw object labels.
 
 # Download unfiltered ORBIT dataset
 

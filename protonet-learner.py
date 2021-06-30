@@ -28,23 +28,21 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE. 
 """
 
-import gc
 import os
-import sys
 import time
 import torch
 import random
 import numpy as np
 import torch.backends.cudnn as cudnn
 
+from data.dataloaders import DataLoader
+from models import SingleStepFewShotRecogniser
+from models.normalisation_layers import TaskNormI
 from utils.args import parse_args
 from utils.losses import cross_entropy
 from utils.ops_counter import OpsCounter
-from data.dataloaders import DataLoader
-from models import CNAPSRecogniser as Recogniser #CNAPSRecogniser can be adapted to ProtoNets
-from models.normalisation_layers import TaskNormI
-from utils.eval_metrics import TrainEvaluator, ValidationEvaluator, TestEvaluator
 from utils.logging import print_and_log, get_log_files, stats_to_str
+from utils.eval_metrics import TrainEvaluator, ValidationEvaluator, TestEvaluator
 
 SEED=1991
 random.seed(SEED)
@@ -53,12 +51,12 @@ torch.multiprocessing.set_sharing_strategy('file_system')
 
 def main():
  
-    learner = MetaLearner()
+    learner = Learner()
     learner.run()
 
-class MetaLearner:
+class Learner:
     def __init__(self):
-        self.args = parse_args(mode='meta-learner')
+        self.args = parse_args()
 
         self.checkpoint_dir, self.logfile, self.checkpoint_path_validation, self.checkpoint_path_final \
             = get_log_files(self.args.checkpoint_dir, self.args.model_path)
@@ -89,7 +87,10 @@ class MetaLearner:
         dataset_info = {
             'mode': self.args.mode,
             'data_path': self.args.data_path,
-            'object_cap': self.args.object_cap,
+            'frame_size': self.args.frame_size,
+            'train_object_cap': self.args.train_object_cap,
+            'with_train_shot_caps': self.args.with_train_shot_caps,
+            'with_cluster_labels': False,
             'train_way_method' : self.args.train_way_method,
             'test_way_method' : self.args.test_way_method,
             'train_shot_methods' : [self.args.train_context_shot_method, self.args.train_target_shot_method],
@@ -112,7 +113,7 @@ class MetaLearner:
         self.test_queue = dataloader.get_test_queue()
 
     def init_model(self):
-        self.model = Recogniser(self.args).to(self.device)
+        self.model = SingleStepFewShotRecogniser(self.args).to(self.device)
         self.register_extra_parameters(self.model)
         
         self.model.train()  # whole model in train mode
@@ -157,7 +158,6 @@ class MetaLearner:
                     if ((step + 1) % self.args.tasks_per_batch == 0) or (step == (total_steps - 1)):
                         self.optimizer.step()
                         self.optimizer.zero_grad()
-                        del task_loss
                 
                 mean_stats = self.train_evaluator.get_mean_stats()
                 seconds = time.time() - since
@@ -175,9 +175,6 @@ class MetaLearner:
                 # validate
                 if (epoch + 1) >= self.args.validation_on_epoch:
                     self.validate()
-                    
-                torch.cuda.empty_cache()
-                gc.collect()
             
             # save the final model
             torch.save(self.model.state_dict(), self.checkpoint_path_final)
@@ -196,7 +193,7 @@ class MetaLearner:
 
         self.model.personalise(context_set, context_labels)
         target_logits = self.model(target_set)
-        self.model.class_representations.clear() # reset task's params
+        self.model._reset() # reset task's params
         
         task_loss = self.loss(target_logits, target_labels) / self.args.tasks_per_batch
         if self.args.adapt_features:
@@ -215,6 +212,7 @@ class MetaLearner:
     def validate(self):
         
         self.model.eval()
+        attach_frame_history_fn = self.validation_queue.dataset.attach_frame_history
 
         with torch.no_grad():
             for step, task_dict in enumerate(self.validation_queue.get_tasks()):
@@ -223,14 +221,17 @@ class MetaLearner:
                 self.model.personalise(context_set, context_labels)
 
                 for target_set, target_labels in zip(target_set_by_video, target_labels_by_video): # loop through videos
+                    target_set, target_labels = attach_frame_history_fn(target_set, target_labels)
                     target_set, target_labels = self.send_to_device(target_set, target_labels)
                     target_logits = self.model(target_set, test_mode=True)
                     self.validation_evaluator.append(target_logits, target_labels)
                     del target_logits
 
-                self.model.class_representations.clear() # reset task's params
+                self.model._reset() # reset task's params
                 
                 if (step+1) % self.args.test_tasks_per_user == 0:
+                    _, current_user_stats = self.validation_evaluator.get_mean_stats(current_user=True)
+                    print_and_log(self.logfile, 'validation user {0:}/{1:} stats: {2:}'.format(self.validation_evaluator.current_user+1, self.validation_queue.num_users, stats_to_str(current_user_stats)))
                     self.validation_evaluator.next_user()
 
             stats_per_user, stats_per_video = self.validation_evaluator.get_mean_stats()
@@ -251,7 +252,7 @@ class MetaLearner:
         self.init_model()
         self.model.load_state_dict(torch.load(path, map_location=self.map_location), strict=False)
         self.model.eval()
-
+        attach_frame_history_fn = self.test_queue.dataset.attach_frame_history
         self.ops_counter.set_base_params(self.model)
 
         with torch.no_grad():
@@ -261,12 +262,13 @@ class MetaLearner:
                 self.model.personalise(context_set, context_labels, ops_counter=self.ops_counter)
                 
                 for target_set, target_labels in zip(target_set_by_video, target_labels_by_video): # loop through videos
+                    target_set, target_labels = attach_frame_history_fn(target_set, target_labels)
                     target_set, target_labels = self.send_to_device(target_set, target_labels)
                     target_logits = self.model(target_set, test_mode=True)
                     self.test_evaluator.append(target_logits, target_labels)
                     del target_logits
                 
-                self.model.class_representations.clear() # reset task's params
+                self.model._reset() # reset task's params
 
                 if (step+1) % self.args.test_tasks_per_user == 0:
                     _, current_user_stats = self.test_evaluator.get_mean_stats(current_user=True)
@@ -279,43 +281,20 @@ class MetaLearner:
             print_and_log(self.logfile, 'test [{0:}]\n per-user stats: {1:}\n per-video stats: {2:}\n model stats: {3:}\n'.format(path, stats_per_user_str, stats_per_video_str,  mean_ops_stats))
             self.test_evaluator.save(path)
             self.test_evaluator.reset()
-
-    def send_to_device(self, data, labels):
-        data = ( data[0].to(self.device), data[1], data[2] )
+    
+    def send_to_device(self, clips, labels):
+        clips = clips.to(self.device)
         labels = labels.to(self.device)
-        return data, labels
-         
+        return clips, labels
+    
     def unpack_task(self, task_dict, test_mode=False):
-        task_dict = { k: v.squeeze(0) if isinstance(v, torch.Tensor) else v for k,v in task_dict.items() }
-        context_frames, context_labels, context_paths, context_video_ids = task_dict['context_frames'], task_dict['context_labels'], task_dict['context_framepaths'], task_dict['context_video_ids']
-        target_frames, target_labels, target_paths, target_video_ids = task_dict['target_frames'], task_dict['target_labels'], task_dict['target_framepaths'], task_dict['target_video_ids']
-
-        context_frames = context_frames.to(self.device)
-        context_video_ids = context_video_ids.to(self.device)
-        context_paths = np.array(context_paths).reshape(-1, self.args.clip_length)
-        context_set = (context_frames, context_paths, context_video_ids)
-        context_labels = context_labels.to(self.device)
-        
-        target_paths = np.array(target_paths).reshape(-1, self.args.clip_length)
+        context_set, context_labels = self.send_to_device(task_dict['context_set'], task_dict['context_labels'])
 
         if test_mode: # test_mode; group target set by videos
-            target_set_by_video, target_labels_by_video = [], []
-            unique_video_ids = torch.unique(target_video_ids)
-            for video_id in unique_video_ids:
-                idxs = target_video_ids == video_id
-                video_clips = target_frames[idxs]
-                video_paths = target_paths[idxs]
-                video_labels = target_labels[idxs].view(-1,1).repeat(1, self.args.clip_length).view(-1)
-                video_ids = target_video_ids[idxs]
-                target_set_by_video.append( (video_clips, video_paths, video_ids) )
-                target_labels_by_video.append( video_labels )
+            target_set_by_video, target_labels_by_video = task_dict['target_set'], task_dict['target_labels']
             return context_set, context_labels, target_set_by_video, target_labels_by_video
         else:
-            target_frames = target_frames.to(self.device)
-            target_video_ids = target_video_ids.to(self.device)
-            target_set = (target_frames, target_paths, target_video_ids)
-            target_labels = target_labels.to(self.device)
-
+            target_set, target_labels = self.send_to_device(task_dict['target_set'], task_dict['target_labels'])
             return context_set, context_labels, target_set, target_labels
 
     def save_checkpoint(self, epoch):
@@ -337,7 +316,6 @@ class MetaLearner:
         for module in model.modules():
             if isinstance(module, TaskNormI):
                 module.register_extra_weights()
-
 
 if __name__ == "__main__":
     main()

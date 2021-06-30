@@ -4,25 +4,31 @@
 import sys
 import argparse
 
-def parse_args(mode='default'):
+def parse_args(learner='default'):
 
     parser = argparse.ArgumentParser()
    
     # default parameters
     parser.add_argument("--checkpoint_dir", default='./checkpoint', help="Directory to save checkpoint to.")
     parser.add_argument("--data_path", required=True, help="Path to ORBIT root directory.")
-    parser.add_argument("--feature_extractor", type=str, default="resnet_18", choices=["resnet_18"],
+    parser.add_argument("--feature_extractor", type=str, default="resnet_18", choices=["resnet_18", "efficientnet_b0"],
                         help="Feature extractor backbone (default: resnet_18).")
+    parser.add_argument("--classifier", default="none", choices=["none", "versa", "proto", "mahalanobis"],
+                        help="Classifier head to use (default: none).")
     parser.add_argument("--pretrained_extractor_path", default='./features/pretrained/resnet_18_imagenet_84.pth', 
                         help="Path to pretrained feature extractor model.")
     parser.add_argument("--adapt_features", action="store_true",
                         help="If True, learns FiLM layers for feature adaptation.")
+    parser.add_argument("--feature_adaptation_method", default="generate", choices=["generate", "learn"],
+                        help="Generate FiLM layers with hyper-networks or add-in and learn FiLM layers directly (default: generate).")
     parser.add_argument("--learn_extractor", action="store_true",
                         help="If True, learns all parameters of feature extractor at 0.1 of learning rate.")
     parser.add_argument("--batch_normalisation", choices=["basic",  "task_norm-i"], default="basic", 
                         help="Normalisation layer to use (default: basic).")
     parser.add_argument("--learning_rate", "-lr", type=float, default=0.0001,
                         help="Learning rate (default: 0.0001).")
+    parser.add_argument("--frame_size", type=int, default=224, choices=[84, 224],
+                        help="Frame size (default: 224).")
     parser.add_argument("--tasks_per_batch", type=int, default=16,
                         help="number of tasks between parameter optimization.")
     parser.add_argument("--subsample_factor", type=int, default=1,
@@ -65,8 +71,10 @@ def parse_args(mode='default'):
                         help="Video type for context set (default: clean).")
     parser.add_argument("--target_video_type", type=str, default='clutter', choices=['clutter', 'clean'],
                         help="Video type for target set (default: clutter).")
-    parser.add_argument("--object_cap", type=int, default=10,
-                        help="Cap on objects sampled per train task (default: 10).")
+    parser.add_argument("--train_object_cap", type=int, default=15,
+                        help="Cap on objects sampled per train task (default: 15).")
+    parser.add_argument("--with_train_shot_caps", action="store_true",
+                        help="Caps videos per objects sampled in train tasks.")
     parser.add_argument("--gpu", type=int, default=0, 
                         help="gpu id to use (default: 0, cpu: <0)")
     parser.add_argument("--print_by_step", action="store_true",
@@ -82,25 +90,25 @@ def parse_args(mode='default'):
     parser.add_argument("--mode", choices=["train", "test", "train_test"], default="train_test",
                         help="Whether to run training only, testing only, or both training and testing.")
 
-    if 'finetune-learner' in mode:
-        parser.add_argument("--num_grad_steps", type=int, default=50,
-                        help="Number of finetuning steps to take (default: 50).")
+    # specific parameters
+    if learner == 'gradient-learner':
+        parser.add_argument("--num_grad_steps", type=int, required=True,
+                        help="Number of inner loop (MAML, typically 15) or fine-tuning (FineTuner, typically 50) steps.")
         parser.add_argument("--inner_learning_rate", "--inner_lr", type=float, default=0.1,
-                        help="Learning rate for finetuning (default: 0.1).")
-    elif 'meta-learner' in mode:
-        parser.add_argument("--classifier", default="versa", choices=["versa", "proto"],
-                        help="Classifier head to use (default: versa).")
-        if 'gradient' in mode:
-            parser.add_argument("--num_grad_steps", type=int, default=15,
-                        help="Number of gradient steps for inner loop (default: 15).")
-            parser.add_argument("--inner_learning_rate", "--inner_lr", type=float, default=0.1,
-                        help="Learning rate for inner loop (default: 0.1).")
+                        help="Learning rate for inner loop (MAML) or fine-tuning (FineTuner) (default: 0.1).")
+        parser.add_argument("--batch_size", type=int, default=128,
+                        help="Batch size for processing context set during train/testing (default: 128).")
              
     args = parser.parse_args()
-    verify_args(mode, args)
+    verify_args(learner, args)
     return args
 
-def verify_args(mode, args): 
-    if 'gradient' in mode or 'finetune' in mode:
-        if 'train' in args.mode and not args.learn_extractor and not args.adapt_features:
-            sys.exit('error: at least one of "--learn_extractor" and "--adapt_features" must be used')
+def verify_args(learner, args): 
+    if 'train' in args.mode and not args.learn_extractor and not args.adapt_features:
+        sys.exit('error: at least one of "--learn_extractor" and "--adapt_features" must be used during training.')
+
+    if args.frame_size == 84:
+        if 'resnet_18' in args.feature_extractor:
+            args.feature_extractor = "{:}_84".format(args.feature_extractor)
+        else:
+            sys.exit('error: --frame_size 84 not implemented for {:0}'.format(args.feature_extractor))

@@ -12,33 +12,34 @@ import data.transforms as it
 from torch.utils.data import Dataset
 
 FRAME_CAP = 1000 # limit number of frames at test time to 1000
-FRAME_SIZE = 84 # size of video frames
 
 """
 Base class for ORBIT dataset
 """
 class ORBITDataset(Dataset):
-    def __init__(self, root, object_cap, way_method, clip_length, subsample_factor, test_mode, with_base_labels):
+    def __init__(self, root, frame_size, object_cap, way_method, clip_length, subsample_factor, test_mode, with_cluster_labels, with_caps):
 
         self.root = root
+        self.frame_size = frame_size
         self.object_cap = object_cap
         self.way_method = way_method
         self.clip_length = clip_length
         self.subsample_factor = subsample_factor
         self.test_mode = test_mode
-        self.with_base_labels = with_base_labels
+        self.with_cluster_labels = with_cluster_labels
+        self.with_caps = with_caps
         self.transformations = self.get_transformations()
         self.load_all_users()
     
     def load_all_users(self):
 
-        self.users, self.obj2vids, self.obj2name, self.obj2base = [], [], [], []
+        self.users, self.obj2vids, self.obj2name, self.obj2cluster = [], [], [], []
         self.user2objs, self.video2id = {}, {}
         mode = os.path.basename(self.root)
         with open(os.path.join('data', 'orbit_{:}_object_cluster_labels.json'.format(mode))) as in_file:
-            vid2base = json.load(in_file)
-        self.base_classes = sorted(set(vid2base.values()))
-        obj2base = self.get_label_map(self.base_classes)
+            vid2cluster = json.load(in_file)
+        self.cluster_classes = sorted(set(vid2cluster.values()))
+        obj2cluster = self.get_label_map(self.cluster_classes)
 
         obj_id, vid_id = 0, 0
         users = [u for u in os.listdir(self.root) if os.path.isdir(os.path.join(self.root, u))]
@@ -54,7 +55,7 @@ class ORBITDataset(Dataset):
                     videos_by_type[video_type] = []
                     type_path = os.path.join(obj_path, video_type)
                     for vid in sorted(os.listdir(type_path)):
-                        obj_base = obj2base [ vid2base[vid] ]
+                        obj_cluster = obj2cluster [ vid2cluster[vid] ]
                         vid_path = os.path.join(type_path, vid)
                         videos_by_type[video_type].append(vid_path)
                         self.video2id[vid_path] = vid_id
@@ -62,7 +63,7 @@ class ORBITDataset(Dataset):
                 
                 self.obj2vids.append(videos_by_type)
                 self.obj2name.append(obj)
-                self.obj2base.append(obj_base)
+                self.obj2cluster.append(obj_cluster)
                 obj_id += 1
             self.user2objs[user] = obj_ids
 
@@ -76,16 +77,13 @@ class ORBITDataset(Dataset):
         return self.user2objs[ self.users[user] ]
     
     def compute_way(self, num_objects):
-        max_objects = min(num_objects, self.object_cap)
+        # all user's objects if object_cap == 'max' else capped by self.object_cap
+        max_objects = num_objects if self.object_cap == 'max' else min(num_objects, self.object_cap) 
         min_objects = 2
         if self.way_method == 'random':
-            way = random.choice(range(min_objects, max_objects + 1))
+            return random.choice(range(min_objects, max_objects + 1))
         elif self.way_method == 'max':
-            if self.test_mode:
-                way = num_objects # all user's objects during meta-test
-            else:
-                way = max_objects # capped during meta-training
-        return way
+            return max_objects
  
     def sample_videos(self, videos, required_shots, shot_method, shot_cap):
 
@@ -124,7 +122,7 @@ class ORBITDataset(Dataset):
         sampled_frame_paths, vid_num_clips = self.choose_frames(frame_paths, num_clips)
 
         # arrange sampled frames in clips of clip_length
-        sampled_frames = torch.zeros(vid_num_clips, self.clip_length, 3, FRAME_SIZE, FRAME_SIZE)
+        sampled_frames = torch.zeros(vid_num_clips, self.clip_length, 3, self.frame_size, self.frame_size)
         for c in range(vid_num_clips):
             for f in range(self.clip_length):
                 sampled_frames[c, f] = self.transformations(sampled_frame_paths[c*self.clip_length+f])
@@ -170,6 +168,7 @@ class ORBITDataset(Dataset):
                 sampled_frame_paths.extend( subsampled_frame_paths[idx-self.clip_length:idx] )
             return sampled_frame_paths, num_clips
 
+
     def prepare_task(self, frames, framepaths, labels, video_ids, test_mode=False):
         frames = torch.stack(frames)
         framepaths = np.array(framepaths)
@@ -177,24 +176,30 @@ class ORBITDataset(Dataset):
         video_ids = torch.tensor(video_ids)
         
         if test_mode:
-            return frames, list(framepaths.reshape((-1))), labels, video_ids
+            frames_by_video, labels_by_video = [], []
+            unique_video_ids = torch.unique(video_ids)
+            for video_id in unique_video_ids:
+                idxs = video_ids == video_id
+                video_frames = frames[idxs].flatten(end_dim=1)
+                video_labels = labels[idxs].view(-1)
+                frames_by_video.append(video_frames)
+                labels_by_video.append(video_labels)
+            return frames_by_video, labels_by_video
         else:
-            return self.shuffle_task(frames, framepaths, labels, video_ids)
- 
-    def shuffle_task(self, frames, framepaths, labels, video_ids):
+            return self.shuffle_task(frames, labels)
+    
+    def shuffle_task(self, frames, labels):
         new_order = torch.randperm(len(frames))
         frames = frames[new_order]
-        framepaths = framepaths[new_order.numpy()]
         labels = labels[new_order]
-        video_ids = video_ids[new_order]
-        return frames, list(framepaths.reshape((-1))), labels, video_ids
+        return frames, labels
     
     def get_transformations(self):
         return it.orbit_benchmark_transform
      
-    def get_label_map(self, objects, with_base_labels=False):
-        if with_base_labels:
-            return self.obj2base
+    def get_label_map(self, objects, with_cluster_labels=False):
+        if with_cluster_labels:
+            return self.obj2cluster
         else:
             map_dict = {}
             new_labels = range(len(objects))
@@ -202,13 +207,30 @@ class ORBITDataset(Dataset):
                 map_dict[old_label] = new_labels[i]
             return map_dict
     
+    def attach_frame_history(self, frames, labels):
+
+        # expand labels
+        labels = labels.view(-1,1).repeat(1, self.clip_length).view(-1)
+
+        # pad with first frame so that first frames 0 to self.clip_length-1 can be evaluated
+        frames_0 = frames.narrow(0, 0, 1)
+        frames = torch.cat((frames_0.repeat(self.clip_length-1, 1, 1, 1), frames), dim=0)
+    
+        # for each frame, attach its immediate history of self.clip_length frames
+        frames = [ frames ]
+        for l in range(1, self.clip_length):
+            frames.append( frames[0].roll(shifts=-l, dims=0) )
+        frames = torch.stack(frames, dim=1)
+        
+        # since frames have wrapped around, remove last (num_frames - 1) frames
+        return frames[:-(self.clip_length-1)], labels
 
 """
 ORBIT dataset class for user-centric episodic sampling
 """
 class UserEpisodicORBITDataset(ORBITDataset):
-    def __init__(self, root, object_cap, way_method, shot_methods, shots, video_types, clip_length, num_clips, subsample_factor, test_mode, with_base_labels):
-        ORBITDataset.__init__(self, root, object_cap, way_method, clip_length, subsample_factor, test_mode, with_base_labels)
+    def __init__(self, root, frame_size, object_cap, way_method, shot_methods, shots, video_types, clip_length, num_clips, subsample_factor, test_mode, with_cluster_labels, with_caps):
+        ORBITDataset.__init__(self, root, frame_size, object_cap, way_method, clip_length, subsample_factor, test_mode, with_cluster_labels, with_caps)
         
         self.shot_context, self.shot_target = shots
         self.shot_method_context, self.shot_method_target = shot_methods
@@ -227,10 +249,10 @@ class UserEpisodicORBITDataset(ORBITDataset):
         # select way (number of classes/objects) randomly
         way = self.compute_way(num_user_objects)
         selected_objects = random.sample(user_objects, way) # without replacement
-        label_map = self.get_label_map(selected_objects, self.with_base_labels)
+        label_map = self.get_label_map(selected_objects, self.with_cluster_labels)
         
-        # set caps, for memory purposes
-        if not self.test_mode:
+        # set caps, for memory purposes (used in training)
+        if self.with_caps:
             self.context_shot_cap = 5 if way >=6 else 10
             self.target_shot_cap = 4 if way >=6 else 8
         
@@ -257,18 +279,14 @@ class UserEpisodicORBITDataset(ORBITDataset):
             context_video_ids.extend(cvi)
             target_video_ids.extend(tvi)
 
-        context_frames, context_framepaths, context_labels, context_video_ids = self.prepare_task(context_frames, context_framepaths, context_labels, context_video_ids)
-        target_frames, target_framepaths, target_labels, target_video_ids = self.prepare_task(target_frames, target_framepaths, target_labels, target_video_ids, test_mode=self.test_mode) 
+        context_set, context_labels = self.prepare_task(context_frames, context_framepaths, context_labels, context_video_ids)
+        target_set, target_labels = self.prepare_task(target_frames, target_framepaths, target_labels, target_video_ids, test_mode=self.test_mode) 
        
         task_dict = { 
-                'context_frames' : context_frames,
-                'target_frames' : target_frames,
+                'context_set' : context_set,
                 'context_labels' : context_labels,
-                'target_labels' : target_labels,
-                'context_framepaths' : context_framepaths,
-                'target_framepaths' : target_framepaths,
-                'context_video_ids' : context_video_ids,
-                'target_video_ids' : target_video_ids
+                'target_set' : target_set,
+                'target_labels' : target_labels
         }
 
         return task_dict
@@ -291,13 +309,16 @@ class UserEpisodicORBITDataset(ORBITDataset):
 ORBIT dataset class for object-centric episodic sampling
 """
 class ObjectEpisodicORBITDataset(ORBITDataset):
-    def __init__(self, root, object_cap, way_method, shot_methods, shots, video_types, clip_length, num_clips, subsample_factor, test_mode, with_base_labels):
-        ORBITDataset.__init__(self, root, object_cap, way_method, clip_length, subsample_factor, test_mode, with_base_labels)
+    def __init__(self, root, frame_size, object_cap, way_method, shot_methods, shots, video_types, clip_length, num_clips, subsample_factor, test_mode, with_cluster_labels, with_caps):
+        ORBITDataset.__init__(self, root, frame_size, object_cap, way_method, clip_length, subsample_factor, test_mode, with_cluster_labels, with_caps)
         
         self.shot_context, self.shot_target = shots
         self.shot_method_context, self.shot_method_target = shot_methods
         self.context_type, self.target_type = video_types
+
         self.context_num_clips, self.target_num_clips = num_clips
+        self.context_shot_cap = 15
+        self.target_shot_cap = 15
         
     def __getitem__(self, index):
         
@@ -306,11 +327,12 @@ class ObjectEpisodicORBITDataset(ORBITDataset):
         # select way (number of classes/objects) randomly
         way = self.compute_way(num_objects)
         selected_objects = random.sample(range(0, num_objects), way) # without replacement
-        label_map = self.get_label_map(selected_objects, self.with_base_labels)
+        label_map = self.get_label_map(selected_objects, self.with_cluster_labels)
         
-        # set caps, for memory purposes
-        self.context_shot_cap = 5 if way >=6 else 10
-        self.target_shot_cap = 4 if way >=6 else 8
+        # set caps, for memory purposes (used in training)
+        if self.with_caps:
+            self.context_shot_cap = 5 if way >=6 else 10
+            self.target_shot_cap = 4 if way >=6 else 8
 
         context_frames, target_frames = [], []
         context_framepaths, target_framepaths = [], []
@@ -335,20 +357,16 @@ class ObjectEpisodicORBITDataset(ORBITDataset):
             context_video_ids.extend(cvi)
             target_video_ids.extend(tvi)
 
-        context_frames, context_framepaths, context_labels, context_video_ids = self.prepare_task(context_frames, context_framepaths, context_labels, context_video_ids)
-        target_frames, target_framepaths, target_labels, target_video_ids = self.prepare_task(target_frames, target_framepaths, target_labels, target_video_ids, test_mode=self.test_mode) 
+        context_set, context_labels = self.prepare_task(context_frames, context_framepaths, context_labels, context_video_ids)
+        target_set, target_labels = self.prepare_task(target_frames, target_framepaths, target_labels, target_video_ids, test_mode=self.test_mode) 
        
         task_dict = { 
-                'context_frames' : context_frames,
-                'target_frames' : target_frames,
+                'context_set' : context_set,
                 'context_labels' : context_labels,
-                'target_labels' : target_labels,
-                'context_framepaths' : context_framepaths,
-                'target_framepaths' : target_framepaths,
-                'context_video_ids' : context_video_ids,
-                'target_video_ids' : target_video_ids
+                'target_set' : target_set,
+                'target_labels' : target_labels
         }
-
+       
         return task_dict
     
     def sample_shots(self, object_videos):

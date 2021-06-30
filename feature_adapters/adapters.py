@@ -38,7 +38,6 @@ class FilmAdapter(nn.Module):
         self.task_dim = task_dim
         self.num_target_layers = len(self.num_maps)
         self.layer = layer
-        self.num_params = 0
         self.layers = self.get_layers()
 
     def get_layers(self):
@@ -51,7 +50,6 @@ class FilmAdapter(nn.Module):
                     task_dim=self.task_dim
                 )
             )
-            self.num_params += layers[-1].num_params
         return layers
 
     def _init_layers(self):
@@ -76,4 +74,3 @@ class NullAdapter(nn.Module):
 
     def regularization_term(self):
         return 0
-

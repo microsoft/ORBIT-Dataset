@@ -35,14 +35,15 @@ import random
 import numpy as np
 import torch.backends.cudnn as cudnn
 
-from models import Recogniser
+from data.batchers import ListBatcher
+from data.dataloaders import DataLoader
+from models import MultiStepFewShotRecogniser
+from models.normalisation_layers import TaskNormI
 from utils.args import parse_args
 from utils.losses import cross_entropy
 from utils.ops_counter import OpsCounter
-from data.dataloaders import DataLoader
-from models.normalisation_layers import TaskNormI
-from utils.eval_metrics import TrainEvaluator, ValidationEvaluator, TestEvaluator
 from utils.logging import print_and_log, get_log_files, stats_to_str
+from utils.eval_metrics import TrainEvaluator, ValidationEvaluator, TestEvaluator
 
 SEED = 1991
 random.seed(SEED)
@@ -50,12 +51,12 @@ torch.manual_seed(SEED)
 torch.multiprocessing.set_sharing_strategy('file_system')
 
 def main():
-    learner = FineTuneLearner()
+    learner = Learner()
     learner.run()
 
-class FineTuneLearner:
+class Learner:
     def __init__(self):
-        self.args = parse_args(mode='finetune-learner')
+        self.args = parse_args(learner='gradient-learner')
 
         self.checkpoint_dir, self.logfile, self.checkpoint_path_validation, self.checkpoint_path_final \
             = get_log_files(self.args.checkpoint_dir, self.args.model_path)
@@ -83,9 +84,12 @@ class FineTuneLearner:
     def init_dataset(self):
 
         dataset_info = {
-            'mode': self.args.mode + '_base',
+            'mode': self.args.mode,
             'data_path': self.args.data_path,
-            'object_cap': self.args.object_cap,
+            'frame_size': self.args.frame_size,
+            'train_object_cap': self.args.train_object_cap,
+            'with_train_shot_caps': self.args.with_train_shot_caps,
+            'with_cluster_labels': True,
             'train_way_method': self.args.train_way_method,
             'test_way_method': self.args.test_way_method,
             'train_shot_methods': [self.args.train_context_shot_method, self.args.train_target_shot_method],
@@ -106,43 +110,38 @@ class FineTuneLearner:
         self.train_queue = dataloader.get_train_queue()
         self.validation_queue = dataloader.get_validation_queue()
         self.test_queue = dataloader.get_test_queue()
+        
+        self.context_batcher = ListBatcher(self.args.batch_size)
+        self.target_batcher = ListBatcher(self.args.batch_size)
 
     def init_model(self):
-        model = Recogniser(self.args)
+        model = MultiStepFewShotRecogniser(self.args)
         model.to(self.device)
         model.train()
-        self.zero_grads(model)
+
+        if self.args.use_two_gpus:
+            model._distribute_model()
 
         return model
+   
+    def init_finetuner(self, num_classes):
+        finetuner = self.init_model()
+        finetuner.load_state_dict(self.model.state_dict(), strict=False)
+        finetuner.eval() 
+        finetuner._freeze_extractor()
+            
+        # initialise feature adapter and zero'ed classifier
+        finetuner._init_task_specific_params(num_classes, self.device)
 
-    def zero_grads(self, model):
-        # init grad buffers to 0, otherwise None until first backward
-        for param in model.parameters():
-            if param.requires_grad:
-                param.grad = param.new(param.size()).fill_(0)
+        return finetuner
 
-    def reset_fast_model(self):
+    def reset_model(self, dest_model):
         with torch.no_grad():
-            for (param_name, param), (fastmodel_param_name, fastmodel_param) in zip(self.model.named_parameters(), self.fast_model.named_parameters()):
+            for (param_name, param), (dest_model_param_name, dest_model_param) in zip(self.model.named_parameters(), dest_model.named_parameters()):
                 if param.requires_grad:
-                    assert param_name == fastmodel_param_name
-                    fastmodel_param.copy_(param.clone().detach())
-                    fastmodel_param.grad.zero_()
-
-    def init_classifier(self, model, num_classes, init_zeros=True, ops_counter=None):
-        model._init_classifier(num_classes, init_zeros=init_zeros, ops_counter=ops_counter)
-        model.classifier.to(self.device)
-        self.zero_grads(model.classifier)
-
-    def init_task_specific_params(self, model, num_classes, ops_counter=None):
-        # add classifier to model
-        self.init_classifier(model, num_classes, ops_counter)
-
-        # add film layers to model
-        if self.args.adapt_features:
-            model._init_film_layers()
-            model.feature_adapter.to(self.device)
-            self.zero_grads(model.feature_adapter)
+                    assert param_name == dest_model_param_name
+                    dest_model_param.copy_(param.clone().detach())
+                    dest_model_param.grad.zero_()
 
     def init_evaluators(self):
         self.train_metrics = ['frame_acc']
@@ -151,23 +150,24 @@ class FineTuneLearner:
         self.validation_evaluator = ValidationEvaluator(self.evaluation_metrics)
         self.test_evaluator = TestEvaluator(self.evaluation_metrics)
     
-    def init_optimizer(self):
-       	feature_extractor_params = list(map(id, self.model.feature_extractor.parameters()))
-        base_params = filter(lambda p: id(p) not in feature_extractor_params, self.model.parameters())
-        feature_extractor_lr = self.args.learning_rate*0.1 if self.args.pretrained_extractor_path else self.args.learning_rate
-        self.optimizer = torch.optim.Adam([
+    def init_optimizer(self, model, lr, extractor_scale_factor=1.0):
+       	feature_extractor_params = list(map(id, model.feature_extractor.parameters()))
+        base_params = filter(lambda p: id(p) not in feature_extractor_params, model.parameters())
+        feature_extractor_lr = lr*extractor_scale_factor if self.args.pretrained_extractor_path else lr
+        optimizer = torch.optim.Adam([
                         {'params': base_params },
-                        {'params': self.model.feature_extractor.parameters(), 'lr': feature_extractor_lr}
-                        ], lr=self.args.learning_rate)
-        self.optimizer.zero_grad()
+                        {'params': model.feature_extractor.parameters(), 'lr': feature_extractor_lr}
+                        ], lr=lr)
+        optimizer.zero_grad()
+        return optimizer
 
     def run(self):
         if self.args.mode == 'train' or self.args.mode == 'train_test':
          
-            num_base_classes = len(self.train_queue.get_base_classes())
-            self.init_classifier(self.model, num_base_classes, init_zeros=False)
+            num_classes = len(self.train_queue.get_cluster_classes())
+            self.model._init_classifier(num_classes, self.device, init_zeros=False)
             
-            self.init_optimizer()
+            self.optimizer = self.init_optimizer(self.model, self.args.learning_rate, extractor_scale_factor=0.1)
             
             for epoch in range(self.args.epochs):
                 losses = []
@@ -179,7 +179,7 @@ class FineTuneLearner:
                 for step, task_dict in enumerate(train_tasks):
 
                     task_loss = self.train_task(task_dict)
-                    losses.append(task_loss)
+                    losses.append(task_loss.detach())
 
                     if ((step + 1) % self.args.tasks_per_batch == 0) or (step == (total_steps - 1)):
                         self.optimizer.step()
@@ -188,7 +188,6 @@ class FineTuneLearner:
                     if self.args.print_by_step:
                         current_stats_str = stats_to_str(self.train_evaluator.get_current_stats())
                         print_and_log(self.logfile, 'epoch [{}/{}][{}/{}], train loss: {:.7f}, {:}'.format(epoch+1, self.args.epochs, step+1, total_steps, task_loss.item(), current_stats_str))
-                    del task_loss
 
                 mean_stats = self.train_evaluator.get_mean_stats()
                 seconds = time.time() - since
@@ -230,7 +229,10 @@ class FineTuneLearner:
         task_loss += self.loss(target_logits, target_labels) / self.args.tasks_per_batch
         
         if self.args.adapt_features:
-            regularization_term = (self.model.feature_adapter.regularization_term())
+            if self.args.adapt_features:
+                regularization_term = (self.model.feature_adapter.regularization_term().cuda(0))
+            else:
+                regularization_term = (self.model.feature_adapter.regularization_term())
             regularizer_scaling = 0.001
             task_loss += regularizer_scaling * regularization_term
 
@@ -241,91 +243,68 @@ class FineTuneLearner:
 
         return task_loss
 
-    def batchify_set(self, context_set, context_labels, batch_size = 200):
-        
-        frames, paths, video_ids = context_set
-        num_clips = len(frames)
+    def finetune(self, context_set, context_labels, model, ops_counter=None):
 
-        # batch_size is number of clips (of length self.args.clip_length) per batch
-        num_batches = num_clips // batch_size
-        batch_sizes = [batch_size]*num_batches
+        finetune_optimizer = self.init_optimizer(model, self.args.inner_learning_rate)
+       
+        context_set_size = len(context_labels)
+        self.context_batcher._set_list_size(context_set_size)
+        num_context_batches = self.context_batcher._get_number_of_batches()
 
-        last_batch_size = num_clips % batch_size
-        batch_sizes.append(last_batch_size)
+        for _ in range(self.args.num_grad_steps): 
+            for batch_id in range(num_context_batches):
+                batch_range = self.context_batcher._get_batch_indices(batch_id)
+                batch_context_set, batch_context_labels = self.prepare_batch(context_set, context_labels, batch_range)
+                batch_context_logits = model(batch_context_set, ops_counter=ops_counter)
+                batch_context_loss = self.loss(batch_context_logits, batch_context_labels)
+                batch_context_loss.backward()
+                 
+            finetune_optimizer.step()
+            finetune_optimizer.zero_grad()
+ 
+    def prepare_batch(self, full_set, full_labels, batch_range, to_device=False):
+        batch_set = full_set[batch_range]
+        batch_labels = full_labels[batch_range]
 
-        batches, batch_labels = [], []
-        for i,bz in enumerate(batch_sizes):
-            idx = i*batch_size
-            batch_range = range(idx,idx+bz)
-            batches.append((frames[batch_range], paths[batch_range], video_ids[batch_range])) 
-            batch_labels.append(context_labels[batch_range])
+        if to_device:
+            batch_set, batch_labels = self.send_to_device(batch_set, batch_labels)
 
-        return iter(zip(batches, batch_labels))
-
-    def personalise(self, context_set, context_labels, model, ops_counter=None):
-
-        for _ in range(self.args.num_grad_steps):
-            
-            grad = [param.grad for param in model.parameters() if param.requires_grad]
-            for batch, batch_labels in self.batchify_set(context_set, context_labels):
-                context_logits = model(batch, ops_counter=ops_counter)
-                context_loss = self.loss(context_logits, batch_labels)
-
-                # compute gradient wrt model parameters
-                params_with_grad = filter(lambda p: p.requires_grad, model.parameters())
-                
-                # accummulate grads over batch
-                grad = [old_grad + new_grad for old_grad, new_grad in zip(grad, torch.autograd.grad(context_loss,
-                                                        params_with_grad,
-                                                        allow_unused=True))]
-
-            # set parameters to updated values
-            with torch.no_grad():
-                p = 0
-                for param in model.parameters():
-                    if param.requires_grad:
-                        param.copy_(param - self.args.inner_learning_rate * grad[p])
-                        p += 1
-
-    def toggle_device(self):
-        if self.args.use_two_gpus:
-            if self.device.index == 0:
-                self.device = torch.device('cuda:1')
-            else:
-                self.device = torch.device('cuda:0')
+        return batch_set, batch_labels
 
     def validate(self):
-        self.toggle_device()
-        
-        self.fast_model = self.init_model()
-        self.fast_model.load_state_dict(self.model.state_dict(), strict=False)
-        self.fast_model.eval()
-       
-        # freeze extractor/embeddings
-        self.fast_model._freeze_extractor()
+
+        attach_frame_history_fn = self.validation_queue.dataset.attach_frame_history
   
         for step, task_dict in enumerate(self.validation_queue.get_tasks()):
             context_set, context_labels, target_set_by_video, target_labels_by_video = self.unpack_task(task_dict, test_mode=True)
 
-            # reset self.fast_model to initial state of self.model for each task
-            self.reset_fast_model()
-
-            # initialise classifier
+            # initialise finetuner model to initial state of self.model for each task, and add a classifier
             num_classes = len(torch.unique(context_labels))
-            self.init_task_specific_params(self.fast_model, num_classes)
+            finetuner = self.init_finetuner(num_classes)
 
             # finetune for task of current user using their context set
-            self.personalise(context_set, context_labels, self.fast_model)
+            self.finetune(context_set, context_labels, finetuner)
 
-            for target_set, target_labels in zip(target_set_by_video, target_labels_by_video):  # loop through videos
-                target_set, target_labels = self.send_to_device(target_set, target_labels)
-                target_logits = self.fast_model(target_set, test_mode=True)
-                self.validation_evaluator.append(target_logits, target_labels)
-                del target_logits
-            del self.fast_model.classifier
+            with torch.no_grad():
+                for target_set, target_labels in zip(target_set_by_video, target_labels_by_video):  # loop through videos
+                    target_set, target_labels = attach_frame_history_fn(target_set, target_labels)
+                    target_set_size = len(target_labels)
+                    self.target_batcher._set_list_size(target_set_size)
+                    num_batches = self.target_batcher._get_number_of_batches()
+                    target_logits = []
+                    for batch_id in range(num_batches):
+                        batch_range = self.target_batcher._get_batch_indices(batch_id)
+                        batch_target_set, batch_target_labels = self.prepare_batch(target_set, target_labels, batch_range, to_device=True)
+                        batch_target_logits = finetuner(batch_target_set, test_mode=True)
+                        target_logits.append(batch_target_logits)
+                   
+                    target_logits = torch.cat(target_logits, dim=0)
+                    self.validation_evaluator.append(target_logits, target_labels)
             
-            if (step+1) % self.args.test_tasks_per_user == 0: # end of current user
-                self.validation_evaluator.next_user()
+                if (step+1) % self.args.test_tasks_per_user == 0: # end of current user
+                    _, current_user_stats = self.validation_evaluator.get_mean_stats(current_user=True)
+                    print_and_log(self.logfile, 'validation user {0:}/{1:} stats: {2:}'.format(self.validation_evaluator.current_user+1, self.validation_queue.num_users, stats_to_str(current_user_stats)))
+                    self.validation_evaluator.next_user()
 
         stats_per_user, stats_per_video = self.validation_evaluator.get_mean_stats()
         stats_per_user_str, stats_per_video_str = stats_to_str(stats_per_user), stats_to_str(stats_per_video)
@@ -338,47 +317,45 @@ class FineTuneLearner:
             print_and_log(self.logfile, 'best validation model was updated.\n')
 
         self.validation_evaluator.reset()
-        self.toggle_device()
 
     def test(self, path):
         
         self.model = self.init_model()
-        self.fast_model = self.init_model()
-
         self.model.load_state_dict(torch.load(path, map_location=self.map_location), strict=False)
-        self.fast_model.load_state_dict(torch.load(path, map_location=self.map_location), strict=False)
-        self.fast_model.eval()
- 
-        # freeze extractor/embeddings
-        self.fast_model._freeze_extractor()
-         
+        attach_frame_history_fn = self.test_queue.dataset.attach_frame_history 
         self.ops_counter.set_base_params(self.model)
          
         for step, task_dict in enumerate(self.test_queue.get_tasks()):
             context_set, context_labels, target_set_by_video, target_labels_by_video = self.unpack_task(task_dict, test_mode=True)
 
-            # reset self.fast_model to initial state of self.model for each task
-            self.reset_fast_model()
-
-            # initialise classifier
+            # initialise finetuner model to initial state of self.model for each task, and add classifier
             num_classes = len(torch.unique(context_labels))
-            self.init_task_specific_params(self.fast_model, num_classes, ops_counter=self.ops_counter)
+            finetuner = self.init_finetuner(num_classes)
 
             # finetune for task of current user using their context set
-            self.personalise(context_set, context_labels, self.fast_model, ops_counter=self.ops_counter)
+            self.finetune(context_set, context_labels, finetuner, ops_counter=self.ops_counter)
             self.ops_counter.task_complete()
 
-            for target_set, target_labels in zip(target_set_by_video, target_labels_by_video):  # loop through videos
-                target_set, target_labels = self.send_to_device(target_set, target_labels)
-                target_logits = self.fast_model(target_set, test_mode=True)
-                self.test_evaluator.append(target_logits, target_labels)
-                del target_logits
-            del self.fast_model.classifier
+            with torch.no_grad():
+                for target_set, target_labels in zip(target_set_by_video, target_labels_by_video):  # loop through videos
+                    target_set, target_labels = attach_frame_history_fn(target_set, target_labels)
+                    target_set_size = len(target_labels)
+                    self.target_batcher._set_list_size(target_set_size)
+                    num_batches = self.target_batcher._get_number_of_batches()
+                    target_logits = []
+                    for batch_id in range(num_batches):
+                        batch_range = self.target_batcher._get_batch_indices(batch_id)
+                        batch_target_set, batch_target_labels = self.prepare_batch(target_set, target_labels, batch_range, to_device=True)
+                        batch_logits = finetuner(batch_target_set, test_mode=True)
+                        target_logits.append(batch_logits)
+                   
+                    target_logits = torch.cat(target_logits, dim=0)
+                    self.test_evaluator.append(target_logits, target_labels)
             
-            if (step+1) % self.args.test_tasks_per_user == 0: # end of current user
-                _, current_user_stats = self.test_evaluator.get_mean_stats(current_user=True)
-                print_and_log(self.logfile, 'test user {0:}/{1:} stats: {2:}'.format(self.test_evaluator.current_user+1, self.test_queue.num_users, stats_to_str(current_user_stats)))
-                self.test_evaluator.next_user()
+                if (step+1) % self.args.test_tasks_per_user == 0: # end of current user
+                    _, current_user_stats = self.test_evaluator.get_mean_stats(current_user=True)
+                    print_and_log(self.logfile, 'test user {0:}/{1:} stats: {2:}'.format(self.test_evaluator.current_user+1, self.test_queue.num_users, stats_to_str(current_user_stats)))
+                    self.test_evaluator.next_user()
                 
         stats_per_user, stats_per_video = self.test_evaluator.get_mean_stats()
         stats_per_user_str, stats_per_video_str = stats_to_str(stats_per_user), stats_to_str(stats_per_video)
@@ -386,44 +363,21 @@ class FineTuneLearner:
         print_and_log(self.logfile, 'test [{0:}]\n per-user stats: {1:}\n per-video stats: {2:}\n model stats: {3:}\n'.format(path, stats_per_user_str, stats_per_video_str,  mean_ops_stats))
         self.test_evaluator.save(path)
         self.test_evaluator.reset()
-
-    def send_to_device(self, data, labels):
-        data = (data[0].to(self.device), data[1], data[2])
+    
+    def send_to_device(self, clips, labels):
+        clips = clips.to(self.device)
         labels = labels.to(self.device)
-        return data, labels
-
+        return clips, labels
+    
     def unpack_task(self, task_dict, test_mode=False):
-        task_dict = { k: v.squeeze(0) if isinstance(v, torch.Tensor) else v for k,v in task_dict.items() }
-        context_frames, context_labels, context_paths, context_video_ids = task_dict['context_frames'], task_dict['context_labels'], task_dict['context_framepaths'], task_dict['context_video_ids']
-        target_frames, target_labels, target_paths, target_video_ids = task_dict['target_frames'], task_dict['target_labels'], task_dict['target_framepaths'], task_dict['target_video_ids']
-
-        context_frames = context_frames.to(self.device)
-        context_video_ids = context_video_ids.to(self.device)
-        context_paths = np.array(context_paths).reshape(-1, self.args.clip_length)
-        context_set = (context_frames, context_paths, context_video_ids)
-        context_labels = context_labels.to(self.device)
-        
-        target_paths = np.array(target_paths).reshape(-1, self.args.clip_length)
+        context_set, context_labels = self.send_to_device(task_dict['context_set'], task_dict['context_labels'])
 
         if test_mode: # test_mode; group target set by videos
-            target_set_by_video, target_labels_by_video = [], []
-            unique_video_ids = torch.unique(target_video_ids)
-            for video_id in unique_video_ids:
-                idxs = target_video_ids == video_id
-                video_clips = target_frames[idxs]
-                video_paths = target_paths[idxs]
-                video_labels = target_labels[idxs].view(-1,1).repeat(1, self.args.clip_length).view(-1)
-                video_ids = target_video_ids[idxs]
-                target_set_by_video.append( (video_clips, video_paths, video_ids) )
-                target_labels_by_video.append( video_labels )
+            target_set_by_video, target_labels_by_video = task_dict['target_set'], task_dict['target_labels']
             return context_set, context_labels, target_set_by_video, target_labels_by_video
         else:
-            target_frames = target_frames.to(self.device)
-            target_video_ids = target_video_ids.to(self.device)
-            target_set = (target_frames, target_paths, target_video_ids)
-            target_labels = target_labels.to(self.device)
-
-            return context_set, context_labels, target_set, target_labels
+            target_set, target_labels = self.send_to_device(task_dict['target_set'], task_dict['target_labels'])
+            return context_set, context_labels, target_set, target_labels 
 
     def save_checkpoint(self, epoch):
         torch.save({
@@ -444,7 +398,6 @@ class FineTuneLearner:
         for module in model.modules():
             if isinstance(module, TaskNormI):
                 module.register_extra_weights()
-
 
 if __name__ == "__main__":
     main()

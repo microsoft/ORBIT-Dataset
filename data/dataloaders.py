@@ -13,11 +13,11 @@ class DataLoader():
         
         mode = dataset_info['mode']
         if 'train' in mode:
-            with_base_labels= True if 'base' in mode else False
             train_config_queue_fn = self.config_user_centric_queue if dataset_info['train_task_type'] == 'user_centric' else self.config_object_centric_queue
             self.train_queue = train_config_queue_fn(
                                         os.path.join(dataset_info['data_path'], 'train'),
-                                        dataset_info['object_cap'],
+                                        dataset_info['frame_size'],
+                                        dataset_info['train_object_cap'],
                                         dataset_info['train_way_method'],
                                         dataset_info['train_shot_methods'],
                                         dataset_info['shots'],
@@ -26,11 +26,13 @@ class DataLoader():
                                         dataset_info['train_num_clips'],
                                         dataset_info['subsample_factor'],
                                         dataset_info['train_tasks_per_user'],
-                                        with_base_labels=with_base_labels,
+                                        with_cluster_labels=dataset_info['with_cluster_labels'],
+                                        with_caps=dataset_info['with_train_shot_caps'],
                                         shuffle=True)
             self.validation_queue = self.config_user_centric_queue(
                                         os.path.join(dataset_info['data_path'], 'validation'),
-                                        dataset_info['object_cap'],
+                                        dataset_info['frame_size'],
+                                        'max',
                                         dataset_info['test_way_method'],
                                         dataset_info['test_shot_methods'],
                                         dataset_info['shots'],
@@ -43,7 +45,8 @@ class DataLoader():
         if 'test' in mode:
             self.test_queue = self.config_user_centric_queue(
                                         os.path.join(dataset_info['data_path'], dataset_info['test_set']),
-                                        dataset_info['object_cap'],
+                                        dataset_info['frame_size'],
+                                        'max',
                                         dataset_info['test_way_method'],
                                         dataset_info['test_shot_methods'],
                                         dataset_info['shots'],
@@ -62,17 +65,17 @@ class DataLoader():
     
     def get_test_queue(self):
         return self.test_queue
-
-    def config_user_centric_queue(self, root, object_cap, way_method, shot_method, shots, video_types, \
-                            clip_length, num_clips, subsample_factor, \
-                            tasks_per_user, test_mode=False, with_base_labels=False, shuffle=False):
-        return UserEpisodicDatasetQueue(root, object_cap, way_method, shot_method, shots, video_types, \
-                                clip_length, num_clips, subsample_factor, \
-                                tasks_per_user, test_mode, with_base_labels, shuffle)
     
-    def config_object_centric_queue(self, root, object_cap, way_method, shot_method, shots, video_types, \
+    def config_user_centric_queue(self, root, frame_size, object_cap, way_method, shot_method, shots, video_types, \
                             clip_length, num_clips, subsample_factor, \
-                            tasks_per_user, test_mode=False, with_base_labels=False, shuffle=False):
-        return ObjectEpisodicDatasetQueue(root, object_cap, way_method, shot_method, shots, video_types, \
+                            tasks_per_user, test_mode=False, with_cluster_labels=False, with_caps=False, shuffle=False):
+        return UserEpisodicDatasetQueue(root, frame_size, object_cap, way_method, shot_method, shots, video_types, \
                                 clip_length, num_clips, subsample_factor, \
-                                tasks_per_user, test_mode, with_base_labels, shuffle)
+                                tasks_per_user, test_mode, with_cluster_labels, with_caps, shuffle)
+    
+    def config_object_centric_queue(self, root, frame_size, object_cap, way_method, shot_method, shots, video_types, \
+                            clip_length, num_clips, subsample_factor, \
+                            tasks_per_user, test_mode=False, with_cluster_labels=False, with_caps=False, shuffle=False):
+        return ObjectEpisodicDatasetQueue(root, frame_size, object_cap, way_method, shot_method, shots, video_types, \
+                                clip_length, num_clips, subsample_factor, \
+                                tasks_per_user, test_mode, with_cluster_labels, with_caps, shuffle)

@@ -35,7 +35,10 @@ import torch.nn.functional as F
 from models.normalisation_layers import TaskNormI 
 
 def mean_pooling(x):
-    return torch.mean(x, dim=0, keepdim=True)
+    if len(x) > 0:
+        return torch.mean(x, dim=0, keepdim=True)
+    else:
+        return x
 
 class SetEncoder(nn.Module):
     def __init__(self, batch_normalisation):
@@ -49,6 +52,10 @@ class SetEncoder(nn.Module):
         x = self.pooling_fn(x)
         x = self.post_pooling_fn(x)
         return x
+    
+    @property
+    def output_size(self):
+        return 64
     
 class Identity(nn.Module):
     def __init__(self):
@@ -107,6 +114,13 @@ class SimplePrePoolNet(nn.Module):
         x = x.view(x.size(0), -1)
         return x
 
+class NullSetEncoder(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x):
+        return None
+
     @property
     def output_size(self):
-        return 64
+        return None
