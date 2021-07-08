@@ -9,7 +9,17 @@ from data.samplers import TaskSampler
 WORKERS=4
 
 class DatasetQueue:
+    """
+    Class for a queue of tasks sampled from UserEpisodicORIBTDataset/ObjectEpisodicORBITDataset.
+
+    """
     def __init__(self, tasks_per_user, shuffle):
+        """
+        Creates instance of DatasetQueue.
+        :param tasks_per_user: (int) Number of tasks per user to add to the queue.
+        :param shuffle: (bool) If True, shuffle tasks, else do not shuffled.
+        :return: Nothing.
+        """
         self.tasks_per_user = tasks_per_user
         self.shuffle = shuffle
         self.num_users = None

@@ -2,11 +2,21 @@
 # Licensed under the MIT license.
 #!/bin/bash
 
-FIGSHARE_TRAIN_URL=https://city.figshare.com/ndownloader/files/27189155
-FIGSHARE_VALIDATION_URL=https://city.figshare.com/ndownloader/files/27188237
-FIGSHARE_TEST_URL=https://city.figshare.com/ndownloader/files/27346766
+FRAME_SIZE=$2
 
-export ORBIT_BENCHMARK_ROOT="$1/orbit_benchmark"
+if [ $FRAME_SIZE = 224 ]
+then
+   FIGSHARE_TRAIN_URL=https://city.figshare.com/ndownloader/files/28368339
+   FIGSHARE_VALIDATION_URL=https://city.figshare.com/ndownloader/files/28368351
+   FIGSHARE_TEST_URL=https://city.figshare.com/ndownloader/files/28368072
+   export ORBIT_BENCHMARK_ROOT="$1/orbit_benchmark_224"
+else
+    FIGSHARE_TRAIN_URL=https://city.figshare.com/ndownloader/files/27189155
+    FIGSHARE_VALIDATION_URL=https://city.figshare.com/ndownloader/files/27188237
+    FIGSHARE_TEST_URL=https://city.figshare.com/ndownloader/files/27346766
+   export ORBIT_BENCHMARK_ROOT="$1/orbit_benchmark"
+fi
+
 mkdir -p $ORBIT_BENCHMARK_ROOT
 
 # download .zips from FigShare
@@ -32,8 +42,10 @@ rm $ORBIT_BENCHMARK_ROOT/train.zip
 rm $ORBIT_BENCHMARK_ROOT/validation.zip
 rm $ORBIT_BENCHMARK_ROOT/test.zip
 
-# resize frames in all videos to 84x84
-echo "resizing video frames to 84x84..."
-FRAME_SIZE=84
-RESIZED_ORBIT_BENCHMARK_ROOT=$ORBIT_BENCHMARK_ROOT"_"$FRAME_SIZE
-python3 scripts/resize_videos.py --data_path $ORBIT_BENCHMARK_ROOT --save_path $RESIZED_ORBIT_BENCHMARK_ROOT --size $FRAME_SIZE --nthreads 12
+if [ $FRAME_SIZE != 224 ]
+then
+    # resize frames in all videos to FRAME_SIZE x FRAME_SIZE
+    echo "resizing video frames to $FRAME_SIZEx$FRAME_SIZE..."
+    RESIZED_ORBIT_BENCHMARK_ROOT=$ORBIT_BENCHMARK_ROOT"_"$FRAME_SIZE
+    python3 scripts/resize_videos.py --data_path $ORBIT_BENCHMARK_ROOT --save_path $RESIZED_ORBIT_BENCHMARK_ROOT --size $FRAME_SIZE --nthreads 12
+fi

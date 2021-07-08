@@ -45,17 +45,6 @@ class DenseBlock(nn.Module):
         out = self.linear2(out)
         return out
 
-class DenseResidualLayer(nn.Module):
-    def __init__(self, num_features):
-        super(DenseResidualLayer, self).__init__()
-        self.linear = nn.Linear(num_features, num_features)
-
-    def forward(self, x):
-        identity = x
-        out = self.linear(x)
-        out += identity
-        return out
-
 class DenseResidualBlock(nn.Module):
     def __init__(self, in_size, out_size):
         super(DenseResidualBlock, self).__init__()

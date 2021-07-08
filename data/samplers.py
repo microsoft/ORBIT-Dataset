@@ -6,7 +6,17 @@ import numpy as np
 from torch.utils.data.sampler import Sampler
 
 class TaskSampler(Sampler):
+    """
+    Sampler class for a fixed number of tasks per user. 
+    """
     def __init__(self, tasks_per_user, num_users, shuffle):
+        """
+        Creates instances of TaskSampler.
+        :param tasks_per_user: (int) Number of tasks to sample per user.
+        :param num_users: (int) Total number of users.
+        :param shuffle: (bool) If True, shuffle tasks, else do not shuffle.
+        :return: Nothing.
+        """
         self.tasks_per_user = tasks_per_user
         self.num_users = num_users
         self.shuffle = shuffle

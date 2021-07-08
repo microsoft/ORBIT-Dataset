@@ -9,28 +9,40 @@ def parse_args(learner='default'):
     parser = argparse.ArgumentParser()
    
     # default parameters
-    parser.add_argument("--checkpoint_dir", default='./checkpoint', help="Directory to save checkpoint to.")
+    parser.add_argument("--checkpoint_dir", default='./checkpoints', help="Directory to save checkpoint to.")
     parser.add_argument("--data_path", required=True, help="Path to ORBIT root directory.")
-    parser.add_argument("--feature_extractor", type=str, default="resnet_18", choices=["resnet_18", "efficientnet_b0"],
-                        help="Feature extractor backbone (default: resnet_18).")
-    parser.add_argument("--classifier", default="none", choices=["none", "versa", "proto", "mahalanobis"],
-                        help="Classifier head to use (default: none).")
-    parser.add_argument("--pretrained_extractor_path", default='./features/pretrained/resnet_18_imagenet_84.pth', 
-                        help="Path to pretrained feature extractor model.")
+    parser.add_argument("--model_path", "-m", default=None,
+                        help="Path to model to load and resume/test.")
+    parser.add_argument("--mode", choices=["train", "test", "train_test"], default="train_test",
+                        help="Whether to run training only, testing only, or both training and testing.")
+    parser.add_argument("--test_set", default='test', choices=['validation', 'test'], 
+                        help="Test set to sample test tasks.")
+    parser.add_argument("--feature_extractor", type=str, default="resnet18", choices=["resnet18", "efficientnetb0"],
+                        help="Feature extractor backbone (default: resnet18).")
+    parser.add_argument("--learn_extractor", action="store_true",
+                        help="If True, learns all parameters of feature extractor at 0.1 of learning rate.")
+    parser.add_argument("--pretrained_extractor_path", type=str, default=None, 
+                        help="Path to pretrained feature extractor model (default: None).")
     parser.add_argument("--adapt_features", action="store_true",
                         help="If True, learns FiLM layers for feature adaptation.")
     parser.add_argument("--feature_adaptation_method", default="generate", choices=["generate", "learn"],
                         help="Generate FiLM layers with hyper-networks or add-in and learn FiLM layers directly (default: generate).")
-    parser.add_argument("--learn_extractor", action="store_true",
-                        help="If True, learns all parameters of feature extractor at 0.1 of learning rate.")
-    parser.add_argument("--batch_normalisation", choices=["basic",  "task_norm-i"], default="basic", 
+    parser.add_argument("--classifier", default="linear", choices=["linear", "versa", "proto", "mahalanobis"],
+                        help="Classifier head to use (default: linear).")
+    parser.add_argument("--batch_normalisation", choices=["basic",  "task_norm"], default="basic", 
                         help="Normalisation layer to use (default: basic).")
+    parser.add_argument("--epochs", "-e", type=int, default=10, 
+                        help="Number of training epochs (default: 10).")
+    parser.add_argument("--validation_on_epoch", type=int, default=5,
+                        help="Epoch to turn on validation (default: 5).")
     parser.add_argument("--learning_rate", "-lr", type=float, default=0.0001,
                         help="Learning rate (default: 0.0001).")
     parser.add_argument("--frame_size", type=int, default=224, choices=[84, 224],
                         help="Frame size (default: 224).")
+    parser.add_argument("--batch_size", type=int, default=256,
+                        help="Batch size when processing context and target set. Used for training/testing FineTuner, testing MAML, and training/testing CNAPs/ProtoNets with LITE (default: 256).")
     parser.add_argument("--tasks_per_batch", type=int, default=16,
-                        help="number of tasks between parameter optimization.")
+                        help="Number of tasks between parameter optimization.")
     parser.add_argument("--subsample_factor", type=int, default=1,
                         help="Factor to subsample video by before sampling clips (default: 1).")
     parser.add_argument("--clip_length", type=int, default=8,
@@ -58,11 +70,9 @@ def parse_args(learner='default'):
     parser.add_argument("--train_task_type", type=str, default="user_centric", choices=["user_centric", "object_centric"],
                         help="Sample train tasks as user-centric or object-centric.")
     parser.add_argument("--train_tasks_per_user", type=int, default=50,
-                        help="Number of train tasks per user (default: 50).")
+                        help="Number of train tasks per user per epoch (default: 50).")
     parser.add_argument("--test_tasks_per_user", type=int, default=5,
                         help="Number of test tasks per user (default: 5).")
-    parser.add_argument("--test_set", default='test', choices=['validation', 'test'], 
-                        help="Test set to sample test tasks.")
     parser.add_argument("--context_shot", type=int, default=5,
                         help="If train/test_context_shot_method = specific/fixed, number of videos per object for context set (default: 5).")
     parser.add_argument("--target_shot", type=int, default=2,
@@ -81,14 +91,10 @@ def parse_args(learner='default'):
                         help="Print training by step (otherwise print by epoch).")
     parser.add_argument("--use_two_gpus", dest="use_two_gpus", default=False, action="store_true",
                         help="If True, do model parallelism over 2 GPUs.")
-    parser.add_argument("--model_path", "-m", default=None,
-                        help="Path to model to load and resume/test.")
-    parser.add_argument("--epochs", "-e", type=int, default=10, 
-                        help="Number of training epochs (default: 10).")
-    parser.add_argument("--validation_on_epoch", type=int, default=5,
-                        help="Epoch to turn on validation (default: 5).")
-    parser.add_argument("--mode", choices=["train", "test", "train_test"], default="train_test",
-                        help="Whether to run training only, testing only, or both training and testing.")
+    parser.add_argument("--with_lite", action="store_true",
+                        help="If True, trains with LITE.")
+    parser.add_argument("--num_lite_samples", type=int, default=8, 
+                        help="Number of context clips per task to back-propagate with LITE training (default: 8)")
 
     # specific parameters
     if learner == 'gradient-learner':
@@ -96,8 +102,6 @@ def parse_args(learner='default'):
                         help="Number of inner loop (MAML, typically 15) or fine-tuning (FineTuner, typically 50) steps.")
         parser.add_argument("--inner_learning_rate", "--inner_lr", type=float, default=0.1,
                         help="Learning rate for inner loop (MAML) or fine-tuning (FineTuner) (default: 0.1).")
-        parser.add_argument("--batch_size", type=int, default=128,
-                        help="Batch size for processing context set during train/testing (default: 128).")
              
     args = parser.parse_args()
     verify_args(learner, args)
@@ -111,4 +115,10 @@ def verify_args(learner, args):
         if 'resnet_18' in args.feature_extractor:
             args.feature_extractor = "{:}_84".format(args.feature_extractor)
         else:
-            sys.exit('error: --frame_size 84 not implemented for {:0}'.format(args.feature_extractor))
+            sys.exit('error: --frame_size 84 not implemented for {:}'.format(args.feature_extractor))
+
+    if learner == 'gradient-learner':
+        if args.with_lite:
+            sys.exit('error: --with_lite is not implemented for MAML, or not necessary for FineTuner')
+        if args.adapt_features and args.feature_adaptation_method == 'generate':
+            sys.exit('error: MAML/FineTuner are not generation-based methods; use --feature_adaptation_method learn')

@@ -1,6 +1,7 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
+import os
 import torch
 import math
 import numpy as np
@@ -105,7 +106,10 @@ class TestEvaluator(Evaluator):
         self.all_frame_probs, self.all_frame_labels = [[]], [[]]
     
     def save(self, path):
-        torch.save(self, path + ".test_evaluator")
+        if os.path.isfile(path):
+            torch.save(self, path + ".test_evaluator")
+        else:
+            torch.save(self, os.path.join(path, "test_evaluator"))
 
     def reset(self):
         self.current_user = 0

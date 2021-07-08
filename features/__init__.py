@@ -1,11 +1,11 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
-from features.resnet import resnet_18, resnet_18_84
-from features.efficientnet import efficientnet_b0
+from features.resnet import resnet18, resnet18_84
+from features.efficientnet import efficientnetb0
 
 extractors = {
-        'resnet_18': resnet_18,
-        'resnet_18_84': resnet_18_84,
-        'efficientnet_b0' : efficientnet_b0
+        'resnet18': resnet18,
+        'resnet18_84': resnet18_84,
+        'efficientnetb0' : efficientnetb0
         }

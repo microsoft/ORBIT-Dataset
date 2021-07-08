@@ -459,7 +459,7 @@ class FilmEfficientNet(EfficientNet):
         x = x.view(x.size(0), -1)
         return x
     
-def efficientnet_b0(pretrained=False, pretrained_model_path=None, batch_norm='basic', with_film=False, **override_params): 
+def efficientnetb0(pretrained=False, pretrained_model_path=None, batch_norm='basic', with_film=False, **override_params): 
     """
         Constructs an EfficientNet-b0 model.
     """

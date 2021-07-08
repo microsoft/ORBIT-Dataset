@@ -30,7 +30,7 @@ SOFTWARE.
 
 import torch
 import torch.nn as nn
-from models.normalisation_layers import TaskNormI, get_normalisation_layer
+from models.normalisation_layers import TaskNorm, get_normalisation_layer
 from feature_adapters.resnet_adaptation_layers import FilmLayer, FilmLayerGenerator
 
 def conv3x3(in_planes, out_planes, stride=1):
@@ -146,7 +146,7 @@ class ResNet(nn.Module):
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-            elif isinstance(m, nn.BatchNorm2d) or isinstance(m, TaskNormI):
+            elif isinstance(m, nn.BatchNorm2d) or isinstance(m, TaskNorm):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
 
@@ -245,7 +245,7 @@ class FilmResNet(ResNet):
 
         return x
 
-def resnet_18(pretrained=False, pretrained_model_path=None, batch_norm='basic', with_film=False, **kwargs):
+def resnet18(pretrained=False, pretrained_model_path=None, batch_norm='basic', with_film=False, **kwargs):
     """
         Constructs a ResNet-18 model.
     """
@@ -261,7 +261,7 @@ def resnet_18(pretrained=False, pretrained_model_path=None, batch_norm='basic', 
 
     return model
 
-def resnet_18_84(pretrained=False, pretrained_model_path=None, batch_norm='basic', with_film=False, **kwargs):
+def resnet18_84(pretrained=False, pretrained_model_path=None, batch_norm='basic', with_film=False, **kwargs):
     """
         Constructs a ResNet-18 model for 84 x 84 images.
     """

@@ -3,6 +3,7 @@
 
 checkpoint/
 *.pyc
+*.sh
 .vscode/
 plots
 scripts/.ipynb_checkpoints

@@ -172,16 +172,16 @@ class TaskNormBase(NormalizationLayer):
         return self._normalize(x, pooled_mean, pooled_var)  # normalize
 
 
-class TaskNormI(TaskNormBase):
+class TaskNorm(TaskNormBase):
     """
-    TaskNorm-I normalization layer. Just need to override the augment moment function with 'instance'.
+    TaskNorm normalization layer. Just need to override the augment moment function with 'instance'.
     """
     def __init__(self, num_features):
         """
         Initialize
         :param num_features: number of channels in the 2D convolutional layer
         """
-        super(TaskNormI, self).__init__(num_features)
+        super(TaskNorm, self).__init__(num_features)
 
     def _get_augment_moment_fn(self):
         """
@@ -191,7 +191,7 @@ class TaskNormI(TaskNormBase):
         return self._compute_instance_moments
 
 def get_normalisation_layer(batch_norm):
-    if batch_norm == 'task_norm-i':
-        return TaskNormI
+    if batch_norm == 'task_norm':
+        return TaskNorm
     else:
         return nn.BatchNorm2d

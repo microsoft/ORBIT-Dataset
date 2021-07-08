@@ -35,8 +35,59 @@ from collections import OrderedDict
 
 from models.mlps import DenseResidualBlock
 
-class Classifier(nn.Module):
+class LinearClassifier(nn.Module):
+    """
+    Class for a linear classification layer.
+    """
+    def __init__(self, in_size):
+        """
+        Creates instance of LinearClassifier.
+        :param in_size: (int) Size of feature extractor output.
+        :return: Nothing.
+        """ 
+        super().__init__()
+        self.in_size = in_size
+
+    def configure(self, out_size, device, init_zeros=True):
+        """
+        Function that creates and initialises a linear classification layer.
+        :param out_size: (int) Number of classes in classification layer.
+        :param device: (torch.device) Device to move classification layer to.
+        :init_zeros: (bool) If True, initialise classification layer with zeros, otherwise use Kaiming uniform.
+        :return: Nothing.
+        """
+        self.linear = nn.Linear(self.in_size, out_size)
+        if init_zeros:
+            nn.init.zeros_(self.linear.weight)
+            nn.init.zeros_(self.linear.bias)
+        else:
+            nn.init.kaiming_uniform_(self.linear.weight, mode="fan_out")
+            nn.init.zeros_(self.linear.bias)
+        self.linear.to(device)
+  
+    def predict(self, features, ops_counter=None):
+        """
+        Function that passes a batch of target features through linear classification layer to get logits over object classes for each feature.
+        :param features: (torch.Tensor) Batch of features.
+        :return: (torch.Tensor) Logits over object classes for each feature.
+        """ 
+        if ops_counter:
+            ops_counter.compute_macs(self.linear, features)
+        
+        return self.linear(features)
+
+    def reset(self):
+        self.linear = None
+
+class HeadClassifier(nn.Module):
+    """
+    Class for a head-style classifier which is created by a computation of (context) features. Similar to https://github.com/cambridge-mlg/cnaps.
+    """
     def __init__(self):
+        """
+        Creates instance of HeadClassifier.
+        :return: Nothing.
+        """
         super().__init__()
     
     def _build_class_reps(self, context_features, context_labels, ops_counter):
@@ -51,6 +102,9 @@ class Classifier(nn.Module):
                 ops_counter.add_macs(class_features.size(0) * class_features.size(1)) # mean pooling
 
         return class_reps
+    
+    def reset(self):
+        self.param_dict = {}
 
     @staticmethod
     def _extract_class_indices(labels, which_class):
@@ -62,11 +116,19 @@ class Classifier(nn.Module):
     def _mean_pooling(x):
         return torch.mean(x, dim=0, keepdim=True)
  
-class VersaClassifier(Classifier):
-    def __init__(self, d_theta):
+class VersaClassifier(HeadClassifier):
+    """
+    Class for a Versa classifier (https://github.com/cambridge-mlg/cnaps). Context features are passed through two hyper-networks to generate the weight and bias parameters of a linear classification layer, respectively.
+    """
+    def __init__(self, in_size):
+        """
+        Creates instance of VersaClassifier.
+        :param in_size: (int) Size of feature extractor output.
+        :return: Nothing.
+        """
         super().__init__()
-        self.weight_processor = self._make_layer(d_theta, d_theta)
-        self.bias_processor = self._make_layer(d_theta, 1)
+        self.weight_processor = self._make_layer(in_size, in_size)
+        self.bias_processor = self._make_layer(in_size, 1)
         self.param_dict = {}
 
     @staticmethod
@@ -74,10 +136,23 @@ class VersaClassifier(Classifier):
         return DenseResidualBlock(in_size, out_size)
     
     def predict(self, target_features):
+        """
+        Function that passes a batch of target features through linear classification layer to get logits over object classes for each feature.
+        :param target_features: (torch.Tensor) Batch of target features.
+        :return: (torch.Tensor) Logits over object classes for each target feature.
+        """ 
         return F.linear(target_features, self.param_dict['weight'], self.param_dict['bias'])
 
-    def configure(self, context_features, context_labels, ops_counter):
+    def configure(self, context_features, context_labels, ops_counter=None):
+        """
+        Function that passes per-class context features through two hyper-networks to generate the weight vector and bias scalar for each class in a linear classification layer.
+        :param context_features: (torch.Tensor) Context features.
+        :param context_labels: (torch.Tensor) Corresponding class labels for context features.
+        :param ops_counter: (utils.OpsCounter or None) Object that counts operations performed.
+        :return: Nothing.
+        """
         assert context_features.size(0) == context_labels.size(0), "context features and labels are different sizes!" 
+
         class_rep_dict = self._build_class_reps(context_features, context_labels, ops_counter)
         class_weight = []
         class_bias = []
@@ -96,20 +171,37 @@ class VersaClassifier(Classifier):
 
         self.param_dict['weight'] = torch.cat(class_weight, dim=0)
         self.param_dict['bias'] = torch.reshape(torch.cat(class_bias, dim=1), [num_classes, ])
-
-    def reset(self):
-        self.param_dict = {}
-
-class PrototypicalClassifier(Classifier):
+        
+class PrototypicalClassifier(HeadClassifier):
+    """
+    Class for a ProtoNets classifier (https://github.com/jakesnell/prototypical-networks). Context features are averaged per class to obtain the weight parameters of a linear classification layer.
+    """
     def __init__(self):
+        """
+        Creates instance of PrototypicalClassifier.
+        :return: Nothing.
+        """
         super().__init__()
         self.param_dict = {}
 
     def predict(self, target_features):
+        """
+        Function that passes a batch of target features through linear classification layer to get logits over object classes for each feature.
+        :param target_features: (torch.Tensor) Batch of target features.
+        :return: (torch.Tensor) Logits over object classes for each target feature.
+        """ 
         return F.linear(target_features, self.param_dict['weight'], self.param_dict['bias'])
 
-    def configure(self, context_features, context_labels, ops_counter):
+    def configure(self, context_features, context_labels, ops_counter=None):
+        """
+        Function that computes the per-class mean of context features and sets this as the class weight vector in a linear classification layer.
+        :param context_features: (torch.Tensor) Context features.
+        :param context_labels: (torch.Tensor) Corresponding class labels for context features.
+        :param ops_counter: (utils.OpsCounter or None) Object that counts operations performed.
+        :return: Nothing.
+        """
         assert context_features.size(0) == context_labels.size(0), "context features and labels are different sizes!" 
+
         class_rep_dict = self._build_class_reps(context_features, context_labels, ops_counter)
         class_weight = []
         class_bias = []
@@ -131,15 +223,26 @@ class PrototypicalClassifier(Classifier):
         self.param_dict['weight'] = torch.cat(class_weight, dim=0)
         self.param_dict['bias'] = torch.reshape(torch.cat(class_bias, dim=1), [num_classes, ])
         
-    def reset(self):
-        self.param_dict = {}
-
-class MahalanobisClassifier(Classifier):
+class MahalanobisClassifier(HeadClassifier):
+    """
+    Class for a Mahalanobis classifier (https://github.com/peymanbateni/simple-cnaps). Computes per-class distributions using context features. Target features are classified by the shortest Mahalanobis distance to these distributions.
+    """
     def __init__(self):
+        """
+        Creates instance of MahalanobisClassifier.
+        :return: Nothing.
+        """
         super().__init__()
         self.param_dict = {}
 
-    def configure(self, context_features, context_labels, ops_counter):
+    def configure(self, context_features, context_labels, ops_counter=None):
+        """
+        Function that computes a per-class distribution (mean, precision) using the context features.
+        :param context_features: (torch.Tensor) Context features.
+        :param context_labels: (torch.Tensor) Corresponding class labels for context features.
+        :param ops_counter: (utils.OpsCounter or None) Object that counts operations performed.
+        :return: Nothing.
+        """
         assert context_features.size(0) == context_labels.size(0), "context features and labels are different sizes!" 
 
         means = []
@@ -170,15 +273,16 @@ class MahalanobisClassifier(Classifier):
         self.param_dict['precisions'] = (torch.stack(precisions))
          
     def predict(self, target_features):
+        """
+        Function that processes a batch of target features to get logits over object classes for each feature. Target features are classified by their Mahalanobis distance to the class means including the class precisions.
+        :param target_features: (torch.Tensor) Batch of target features.
+        :return: (torch.Tensor) Logits over object classes for each target feature.
+        """ 
         # grabbing the number of classes and query examples for easier use later in the function
         number_of_classes = self.param_dict['means'].size(0)
         number_of_targets = target_features.size(0)
 
-        """
-        Calculating the Mahalanobis distance between query examples and the class means
-        including the class precision estimates in the calculations, reshaping the distances
-        and multiplying by -1 to produce the sample logits
-        """
+        # calculate the Mahalanobis distance between target features and the class means including the class precision
         repeated_target = target_features.repeat(1, number_of_classes).view(-1, self.param_dict['means'].size(1))
         repeated_class_means = self.param_dict['means'].repeat(number_of_targets, 1)
         repeated_difference = (repeated_class_means - repeated_target)
@@ -188,9 +292,6 @@ class MahalanobisClassifier(Classifier):
         logits = torch.mul(first_half, repeated_difference).sum(dim=2).transpose(1, 0) * -1
 
         return logits
-
-    def reset(self):
-        self.param_dict = {}
 
     @staticmethod
     def _estimate_cov(examples, ops_counter, rowvar=False, inplace=False):
