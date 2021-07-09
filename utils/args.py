@@ -112,7 +112,7 @@ def verify_args(learner, args):
         sys.exit('error: at least one of "--learn_extractor" and "--adapt_features" must be used during training.')
 
     if args.frame_size == 84:
-        if 'resnet_18' in args.feature_extractor:
+        if 'resnet18' in args.feature_extractor:
             args.feature_extractor = "{:}_84".format(args.feature_extractor)
         else:
             sys.exit('error: --frame_size 84 not implemented for {:}'.format(args.feature_extractor))

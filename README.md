@@ -86,6 +86,28 @@ python3 single-step-learner.py --data_path folder/to/save/dataset/orbit_benchmar
                          --with_lite --num_lite_samples 8 --batch_size 8 \
 ```
 
+## Simple CNAPs
+Implementation of model-based few-shot learner [Simple CNAPs](https://arxiv.org/abs/1912.03432) (Bateni et al., _CVPR 2020_).
+
+**Simple CNAPs baseline** (see [Table 1](https://arxiv.org/pdf/2107.01105.pdf)) is run with 84x84 frames and a ResNet-18 feature extractor. It is trained/tested on 2x V100 32GB GPUs with training caps on the number of objects/videos per task:
+```
+python3 single-step-learner.py --data_path folder/to/save/dataset/orbit_benchmark_84 --frame_size 84 \
+                               --feature_extractor resnet18 --pretrained_extractor_path features/pretrained/resnet18_imagenet_84.pth \
+                               --classifier mahalanobis --adapt_features \
+                               --context_video_type clean --target_video_type clutter \
+                               --train_object_cap 10 --with_train_shot_caps \
+                               --use_two_gpus 
+```
+
+**Simple CNAPs + LITE** (see [Table 1](https://arxiv.org/pdf/2107.01105.pdf)) is run with 224x224 frames and an EfficientNet-B0 feature extractor. It is trained/tested on 1x Titan RTX 24GB GPU with no training caps on the number of objects/videos per task:
+```
+python3 single-step-learner.py --data_path folder/to/save/dataset/orbit_benchmark_224 --frame_size 224 \
+                         --feature_extractor efficientnetb0 --pretrained_extractor_path features/pretrained/efficientnetb0_imagenet_224.pth \
+                         --classifier mahalanobis --adapt_features \
+                         --context_video_type clean --target_video_type clutter \
+                         --with_lite --num_lite_samples 8 --batch_size 8 \
+```
+
 ## ProtoNets
 
 Implementation of metric-based few-shot learner [ProtoNets](https://arxiv.org/abs/1703.05175) (Snell et al., _NeurIPS 2017_).
@@ -141,7 +163,7 @@ python3 finetune-learner.py --data_path folder/to/save/dataset/orbit_benchmark_8
 ```
 Note, like MAML, it is possible to train/test on a GPU with less memory by reducing `--batch_size`. 
 
-**FineTuner on large images** (see [Table 1](https://arxiv.org/pdf/2107.01105.pdf)) is run with 224x224 frames and an EfficientNet-B0 feature extractor. It is not trained on ORBIT, but freezes a pre-trained ImageNet extractor and finetunes a new classification layer for each ORBIT test task using standard batch processing on 1x Titan RTX 24GB GPU:
+**FineTuner on large images** (see [Table 1](https://arxiv.org/pdf/2107.01105.pdf)) is run with 224x224 frames and an EfficientNet-B0 feature extractor. The model used in the paper is not trained on ORBIT, but instead freezes a pre-trained ImageNet extractor and finetunes a new classification layer for each ORBIT test task using standard batch processing on 1x Titan RTX 24GB GPU:
 ```
 python3 finetune-learner.py --data_path folder/to/save/dataset/orbit_benchmark_224 --frame_size 224 \
                             --feature_extractor efficientnetb0 --feature_extractor_path features/pretrained/efficientnetb0_imagenet_224.pth \
@@ -149,9 +171,9 @@ python3 finetune-learner.py --data_path folder/to/save/dataset/orbit_benchmark_2
                             --classifier linear \
                             --context_video_type clean --target_video_type clutter \
                             --inner_learning_rate 0.1 --num_grad_steps 50 \
-                            --batch_size 24
+                            --batch_size 16
 ```
-Note, as above, it is possible to test on a GPU with less memory by reducing `--batch_size`. 
+Note, like MAML, it is possible to test on a GPU with less memory by reducing `--batch_size`. 
 
 # Pre-trained checkpoints
 
@@ -160,16 +182,18 @@ The following checkpoints have been trained on the ORBIT benchmark dataset using
 |   Model   | Frame size | Feature extractor |  Trained with LITE | Trained with clean/clean (context/target) videos | Trained with clean/clutter (context/target) videos |
 |:---------:|:----------:|:-----------------:|:------------------:|:-------------:|:-------------------:|
 |   CNAPs   |     84     |     ResNet-18     |         N          |[`orbit_cleve_cnaps_resnet18_84.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cleve_cnaps_resnet18_84.pth)|[`orbit_cluve_cnaps_resnet18_84.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cluve_cnaps_resnet18_84.pth)|
+|           |     224    |  ResNet-18  |         Y          |[`orbit_cleve_cnaps_resnet18_224_lite.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cleve_cnaps_resnet18_224_lite.pth)|[`orbit_cluve_cnaps_224_resnet18_224_lite.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cluve_cnaps_resnet18_224_lite.pth)|
 |           |     224    |  EfficientNet-B0  |         Y          |[`orbit_cleve_cnaps_efficientnetb0_224_lite.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cleve_cnaps_efficientnetb0_224_lite.pth)|[`orbit_cluve_cnaps_224_efficientnetb0_224_lite.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cluve_cnaps_efficientnetb0_224_lite.pth)|
-|   Simple CNAPs   |     84     |     ResNet-18     |         N          |[`orbit_cleve_simplecnaps_resnet18_84.pth`]()|[`orbit_cluve_simplecnaps_resnet18_84.pth`]()|
+|   Simple CNAPs   |     84     |     ResNet-18     |         N          |[`orbit_cleve_simplecnaps_resnet18_84.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cleve_simplecnaps_resnet18_84.pth)|[`orbit_cluve_simplecnaps_resnet18_84.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cluve_simplecnaps_resnet18_84.pth)|
+|           |     224    |  ResNet-18  |         Y          |[`orbit_cleve_simplecnaps_resnet18_224_lite.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cleve_simplecnaps_resnet18_224_lite.pth)|[`orbit_cluve_simplecnaps_224_resnet18_224_lite.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cluve_simplecnaps_resnet18_224_lite.pth)|
 |           |     224    |  EfficientNet-B0  |         Y          |[`orbit_cleve_simplecnaps_efficientnetb0_224_lite.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cleve_simplecnaps_efficientnetb0_224_lite.pth)|[`orbit_cluve_simplecnaps_224_efficientnetb0_224_lite.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cluve_simplecnaps_efficientnetb0_224_lite.pth)|
 | ProtoNets |     84     |     ResNet-18     |         N          |[`orbit_cleve_protonets_resnet18_84.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cleve_protonets_resnet18_84.pth)|[`orbit_cluve_protonets_resnet18_84.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cluve_protonets_resnet18_84.pth)|
-|           |     224    |  EfficientNet-B0  |         Y          |[`orbit_cleve_protonets_efficientnetb0_224_lite.pth`]()|[`orbit_cluve_protonets_efficientnetb0_224_lite.pth`]()|
+|           |     224    |  ResNet-18  |         Y          |[`orbit_cleve_protonets_resnet18_224_lite.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cleve_protonets_resnet18_224_lite.pth)|[`orbit_cluve_protonets_resnet18_224_lite.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cluve_protonets_resnet18_224_lite.pth)|
+|           |     224    |  EfficientNet-B0  |         Y          |[`orbit_cleve_protonets_efficientnetb0_224_lite.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cleve_protonets_efficientnetb0_224_lite.pth)|[`orbit_cluve_protonets_efficientnetb0_224_lite.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cluve_protonets_efficientnetb0_224_lite.pth)|
 |    MAML   |     84     |     ResNet-18     |         N          |[`orbit_cleve_maml_resnet18_84.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cleve_maml_resnet18_84.pth)|[`orbit_cluve_maml_resnet18_84.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cluve_maml_resnet18_84.pth)|
+|           |     224    |  ResNet-18 |         Y          |Not implemented |Not implemented |
 |           |     224    |  EfficientNet-B0  |         Y          |Not implemented |Not implemented |
 | FineTuner |     84     |     ResNet-18     |         N          |[`orbit_cleve_finetuner_resnet18_84.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cleve_finetuner_resnet18_84.pth)|[`orbit_cluve_finetuner_resnet18_84.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cluve_finetuner_resnet18_84.pth)|
-
-<!-- (|           |     224    |  EfficientNet-B0  |         N          |[`orbit_cleve_finetuner_224_efficientnetb0.pt`]()|[`orbit_cluve_finetuner_224_efficientnetb0.pt`]()|)-->
 
 # Download unfiltered ORBIT dataset
 

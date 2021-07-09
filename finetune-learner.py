@@ -201,7 +201,6 @@ class Learner:
         self.train_evaluator.update_stats(joint_context_logits, joint_context_labels) 
 
         task_loss = self.loss(joint_context_logits, joint_context_labels) / self.args.tasks_per_batch
-        #task_loss += self.loss(target_logits, target_labels) / self.args.tasks_per_batch 
         task_loss += 0.001 * self.model.feature_adapter.regularization_term(switch_device=self.args.use_two_gpus)
         task_loss.backward()
 
@@ -210,7 +209,7 @@ class Learner:
     def validate(self):
 
         attach_frame_history_fn = self.validation_queue.dataset.attach_frame_history
-  
+
         for step, task_dict in enumerate(self.validation_queue.get_tasks()):
             context_set, context_labels, target_set_by_video, target_labels_by_video = unpack_task(task_dict, self.device, test_mode=True)
 
