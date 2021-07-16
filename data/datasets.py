@@ -8,10 +8,7 @@ import torch
 import random
 import torchvision
 import numpy as np
-import data.transforms as it
 from torch.utils.data import Dataset
-
-FRAME_CAP = 1000 # limit number of frames at test time to 1000
 
 class ORBITDataset(Dataset):
     """
@@ -40,7 +37,7 @@ class ORBITDataset(Dataset):
         self.test_mode = test_mode
         self.with_cluster_labels = with_cluster_labels
         self.with_caps = with_caps
-        self.transformations = self.get_transformations()
+        self.frame_cap = 1000 # limit number of frames in any one video
         self.load_all_users()
     
     def load_all_users(self):
@@ -104,7 +101,7 @@ class ORBITDataset(Dataset):
         elif self.way_method == 'max':
             return max_objects
     
-    def sample_shots(self, object_videos):
+    def sample_videos(self, object_videos):
         """ 
         Function to sample context and target video paths for a given object.
         :param object_videos: (dict::list::str) Dictionary of context and target video paths for an object.
@@ -113,17 +110,17 @@ class ORBITDataset(Dataset):
         if self.context_type == self.target_type: # context = clean; target = held-out clean
             num_context_avail = len(object_videos[self.context_type])
             split = min(self.shot_context, num_context_avail-1) # leave at least 1 target video
-            context = self.sample_videos(object_videos[self.context_type][:split], self.shot_context, self.shot_method_context, self.context_shot_cap)
-            target = self.sample_videos(object_videos[self.context_type][split:], self.shot_target, self.shot_method_target, self.target_shot_cap)
+            context = self.choose_videos(object_videos[self.context_type][:split], self.shot_context, self.shot_method_context, self.context_shot_cap)
+            target = self.choose_videos(object_videos[self.context_type][split:], self.shot_target, self.shot_method_target, self.target_shot_cap)
         else: # context = clean; target = clutter
-            context = self.sample_videos(object_videos[self.context_type], self.shot_context, self.shot_method_context, self.context_shot_cap)
-            target = self.sample_videos(object_videos[self.target_type], self.shot_target, self.shot_method_target, self.target_shot_cap)
+            context = self.choose_videos(object_videos[self.context_type], self.shot_context, self.shot_method_context, self.context_shot_cap)
+            target = self.choose_videos(object_videos[self.target_type], self.shot_target, self.shot_method_target, self.target_shot_cap)
 
         return context, target
  
-    def sample_videos(self, videos, required_shots, shot_method, shot_cap):
+    def choose_videos(self, videos, required_shots, shot_method, shot_cap):
         """ 
-        Function to sample video paths from a list of video paths according to required shots, shot method, and shot cap.
+        Function to choose video paths from a list of video paths according to required shots, shot method, and shot cap.
         :param videos: (list::str) List of video paths.
         :param required_shots: (int) Number of videos to select.
         :param shot_method: (str) Method to select videos with options for specific/fixed/random/max - see comments below.
@@ -146,22 +143,20 @@ class ORBITDataset(Dataset):
             max_shots = min(num_videos, shot_cap) # capped for memory reasons
             return random.sample(videos, max_shots)
     
-    def get_video_data(self, videos, num_clips):
+    def sample_clips_from_videos(self, video_paths, num_clips):
         """ 
-        Function to get frame data (and their corresponding paths and video IDs) for each video in a list of videos.
-        :param videos: (list::str) List of video paths.
-        :param num_clips: (int or str) Number of clips of contiguous frames to sample per video. If 'max', sample all frames.
-        :return: (list::torch.Tensor, list::np.array, list::int) Frame data for each video in the given list. Also returns list of corresponding frame paths for each video, and the number of clips sampled from each video.
+        Function to sample clips from a list of videos.
+        :param video_paths: (list::str) List of video paths.
+        :param num_clips: (int or str) Number of clips of contiguous frames to sample per video. If 'max', sample all non-overlapping clips.
+        :return: (list::np.ndarray, list::int) Frame paths organised in clips of self.clip_length contiguous frames, and video ID for each sampled clip.
         """
-        frames_list, framepaths_list, video_ids = [], [], []
-        for video_path in videos:
-            frame_paths = sorted(glob.glob(os.path.join(video_path, "*.jpg")))
-            sampled_frames, sampled_framepaths, vid_num_clips = self.load_frames(frame_paths, num_clips)
-            frames_list.extend(sampled_frames)
-            framepaths_list.extend(sampled_framepaths)
-            video_ids.extend([self.video2id[video_path] for _ in range(vid_num_clips)])
+        clip_paths, video_ids = [], []
+        for video_path in video_paths:
+            sampled_clip_paths = self.sample_clips_from_a_video(video_path, num_clips)
+            clip_paths.extend(sampled_clip_paths)
+            video_ids.extend([self.video2id[video_path] for _ in range(len(sampled_clip_paths))])
         
-        return frames_list, framepaths_list, video_ids
+        return clip_paths, video_ids
     
     def get_video_label(self, obj, label_map):
         """ 
@@ -172,43 +167,28 @@ class ORBITDataset(Dataset):
         """ 
         return label_map[ obj ]
     
-    def load_frames(self, frame_paths, num_clips):
+    def sample_clips_from_a_video(self, video_path, num_clips):
         """ 
-        Function to load frames from disk and return them as a tensor of num_clips x self.clip_length x 3 x self.frame_size x self.frame_size.
-        :param frame_paths: (list::str) List of all frame paths from a single video.
-        :param num_clips: (int or str) Number of clips of contiguous frames to sample from the video. If 'max', sample all frames.
-        :return: (torch.Tensor, np.array, int) Tensor of transformed frame data. Also returns array of corresponding frame paths and the number of clips sampled from the video.
-        """ 
-        sampled_frame_paths, vid_num_clips = self.sample_frames(frame_paths, num_clips)
+        Function to sample num_clips clips from a single video.
+        :param video_path: (str) Path to a single video.
+        :param num_clips: (int or str) Number of clips of contiguous frames to sample from the video. If 'max', sample all non-overlapping clips.
+        :return: (np.ndarray::str) Frame paths organised in clips of self.clip_length contiguous frames.
+        """
+        # get all frame paths from video
+        frame_paths = sorted(glob.glob(os.path.join(video_path, "*.jpg")))
 
-        # arrange sampled frames in clips of clip_length
-        sampled_frames = torch.zeros(vid_num_clips, self.clip_length, 3, self.frame_size, self.frame_size)
-        for c in range(vid_num_clips):
-            for f in range(self.clip_length):
-                sampled_frames[c, f] = self.transformations(sampled_frame_paths[c*self.clip_length+f])
-
-        sampled_frame_paths = np.array(sampled_frame_paths).reshape((vid_num_clips, self.clip_length))
-        
-        return sampled_frames, sampled_frame_paths, vid_num_clips
-    
-    def sample_frames(self, frame_paths, num_clips):
-        """ 
-        Function to sample frame paths from a list of all frame paths from a single video.
-        :param frame_paths: (list::str) List of all frame paths from a single video.
-        :param num_clips: (int or str) Number of clips of contiguous frames to sample from the video. If 'max', sample all frame paths.
-        :return: (list::str, int) Sampled frame paths and the corresponding number of clips of self.clip_length frames.
-        """ 
         # subsample frames by subsample_factor
-        subsampled_frame_paths = frame_paths[0:FRAME_CAP:self.subsample_factor]
+        subsampled_frame_paths = frame_paths[0:self.frame_cap:self.subsample_factor]
         num_subsampled_frames = len(subsampled_frame_paths)
 
-        if num_clips == 'max':
-            vid_num_clips = num_subsampled_frames // self.clip_length
-            return subsampled_frame_paths[:vid_num_clips*self.clip_length], vid_num_clips
-        else: 
-            num_required_frames = self.clip_length*num_clips
-        
+        if num_clips == 'max': # select all clips from video
+            max_num_clips = num_subsampled_frames // self.clip_length
+            selected_frame_paths = subsampled_frame_paths[:max_num_clips*self.clip_length]
+            sampled_clip_paths = np.array(selected_frame_paths, dtype=str).reshape((max_num_clips, self.clip_length))
+        else: # select fixed num_clips from video 
             # if num_required_frames cannot be filled, duplicate random frames
+            num_clips = int(num_clips) 
+            num_required_frames = self.clip_length*num_clips
             diff = num_required_frames - num_subsampled_frames
             if diff > 0:
                 if diff > len(frame_paths):
@@ -217,59 +197,53 @@ class ORBITDataset(Dataset):
                     duplicate_frame_paths = random.sample(frame_paths, diff) #without replacement
 
                 subsampled_frame_paths.extend(duplicate_frame_paths)
+                subsampled_frame_paths.sort()
 
-            # now sample self.num_clips contiguous, non-overlapping clips of self.clip_length each
-            subsampled_frame_paths.sort()
+            # randomly select num_clips, each of self.clip_length contiguous frames
             frame_idxs = range(self.clip_length, len(subsampled_frame_paths)+1, self.clip_length)
             key_frame_idxs = random.sample(frame_idxs, num_clips)
-            sampled_frame_paths = []
+            sampled_clip_paths = []
             for idx in key_frame_idxs:
-                sampled_frame_paths.extend( subsampled_frame_paths[idx-self.clip_length:idx] )
-            return sampled_frame_paths, num_clips
+                sampled_clip_paths.append(subsampled_frame_paths[idx-self.clip_length:idx])
+            sampled_clip_paths = np.array(sampled_clip_paths, dtype=str)
+        
+        return sampled_clip_paths
 
-
-    def prepare_task(self, frames, framepaths, labels, video_ids, test_mode=False):
+    def prepare_task(self, clip_paths, clip_labels, video_ids, test_mode=False):
         """ 
         Function to prepare context/target set for a task.
-        :param frames: (list::torch.Tensor) List of tensors of frame data organised in clips of self.clip_length contiguous frames. 
-        :param framepaths: (list::np.array) List of frame paths corresponding to frames.
-        :param labels: (list::int) List of video-level labels corresponding to frames.
-        :param video_ids: (list::int) List of videos IDs corresponding to frames.
-        :param test_mode: (bool) If True, group clips and labels by videos they came from, otherwise no grouping is applied.
-        :return: (torch.Tensor, torch.Tensor or list::torch.Tensor, list::torch.Tensor) Clips of self.clip_length contiguous frames and their corresponding video-level labels.
+        :param clip_paths: (list::np.ndarray::str) List of frame paths organised in clips of self.clip_length contiguous frames.
+        :param clip_labels: (list::int) List of object labels for each clip.
+        :param video_ids: (list::int) List of videos IDs corresponding to clip_paths.
+        :param test_mode: (bool) If False, do not shuffle task, otherwise shuffle.
+        :return: (np.ndarray::str, torch.Tensor) Frame paths organised in clips and their corresponding video-level labels.
         """
-        frames = torch.stack(frames)
-        framepaths = np.array(framepaths)
-        labels = torch.tensor(labels)
-        video_ids = torch.tensor(video_ids)
+        clip_paths = np.array(clip_paths)
+        clip_labels = torch.tensor(clip_labels)
         
         if test_mode:
-            frames_by_video, labels_by_video = [], []
-            unique_video_ids = torch.unique(video_ids)
+            clip_paths_by_video, clip_labels_by_video = [], []
+            unique_video_ids = np.unique(video_ids)
             for video_id in unique_video_ids:
                 idxs = video_ids == video_id
-                video_frames = frames[idxs].flatten(end_dim=1)
-                video_labels = labels[idxs].view(-1)
-                frames_by_video.append(video_frames)
-                labels_by_video.append(video_labels)
-            return frames_by_video, labels_by_video
+                clip_paths_for_a_video = clip_paths[idxs]
+                clip_labels_for_a_video = clip_labels[idxs]
+                clip_paths_by_video.append(clip_paths_for_a_video)
+                clip_labels_by_video.append(clip_labels_for_a_video)
+            return clip_paths_by_video, clip_labels_by_video
         else:
-            return self.shuffle_task(frames, labels)
+            return self.shuffle_task(clip_paths, clip_labels)
     
-    def shuffle_task(self, frames, labels):
+    def shuffle_task(self, clip_paths, clip_labels):
         """
-        Function to shuffle frames and labels.
-        :param frames: (torch.Tensor) Frame data organized in clips of self.clip_length contiguous frames.
-        :param labels: (torch.Tensor). Video-level labels for each clip.
-        :return: (torch.Tensor, torch.Tensor) Shuffled frames and labels.
+        Function to shuffle clips and their object labels.
+        :param clip_paths: (np.ndarray::str) Frame paths organised in clips of self.clip_length contiguous frames.
+        :param clip_labels: (torch.Tensor) Object labels for each clip.
+        :return: (np.ndarray::str, np.ndarray::int) Shuffled clips and their corresponding object labels.
         """
-        new_order = torch.randperm(len(frames))
-        frames = frames[new_order]
-        labels = labels[new_order]
-        return frames, labels
-    
-    def get_transformations(self):
-        return it.orbit_benchmark_transform
+        idxs = np.arange(len(clip_paths))
+        random.shuffle(idxs)
+        return clip_paths[idxs], clip_labels[idxs]
      
     def get_label_map(self, objects, with_cluster_labels=False):
         """
@@ -287,29 +261,6 @@ class ORBITDataset(Dataset):
                 map_dict[old_label] = new_labels[i]
             return map_dict
     
-    def attach_frame_history(self, frames, labels):
-        """
-        Function to attach the immediate history of self.clip_length frames to each frame in a tensor of frames.
-        :param frames: (torch.Tensor) Frame data organized in clips of self.clip_length contiguous frames.
-        :param labels: (torch.Tensor) Video-level labels for each clip.
-        :return: (torch.Tensor, torch.Tensor) Tensors of frames with attached frame history and replicated video-level labels.
-        """
-        # expand labels
-        labels = labels.view(-1,1).repeat(1, self.clip_length).view(-1)
-
-        # pad with first frame so that first frames 0 to self.clip_length-1 can be evaluated
-        frames_0 = frames.narrow(0, 0, 1)
-        frames = torch.cat((frames_0.repeat(self.clip_length-1, 1, 1, 1), frames), dim=0)
-    
-        # for each frame, attach its immediate history of self.clip_length frames
-        frames = [ frames ]
-        for l in range(1, self.clip_length):
-            frames.append( frames[0].roll(shifts=-l, dims=0) )
-        frames = torch.stack(frames, dim=1)
-        
-        # since frames have wrapped around, remove last (num_frames - 1) frames
-        return frames[:-(self.clip_length-1)], labels
-
 class UserEpisodicORBITDataset(ORBITDataset):
     """
     Class for user-centric episodic sampling of ORBIT dataset.
@@ -362,37 +313,33 @@ class UserEpisodicORBITDataset(ORBITDataset):
             self.context_shot_cap = 5 if way >=6 else 10
             self.target_shot_cap = 4 if way >=6 else 8
         
-        context_frames, target_frames = [], []
-        context_framepaths, target_framepaths = [], []
+        # for each object, sample context and target clips
+        context_clips, target_clips = [], []
         context_labels, target_labels = [], []
-        context_video_ids, target_video_ids = [], []
+        context_clip_video_ids, target_clip_video_ids = [], []
         for i, obj in enumerate(selected_objects):
-            context, target = self.sample_shots(self.obj2vids[obj])
+            context_videos, target_videos = self.sample_videos(self.obj2vids[obj])
+            cc, ccvi = self.sample_clips_from_videos(context_videos, self.context_num_clips)
+            tc, tcvi = self.sample_clips_from_videos(target_videos, self.target_num_clips)
 
-            cf, cfp, cvi = self.get_video_data(context, self.context_num_clips)
-            tf, tfp, tvi = self.get_video_data(target, self.target_num_clips)
+            context_clips.extend(cc)
+            target_clips.extend(tc)
+
             l = self.get_video_label(obj, label_map)
+            context_labels.extend([l for _ in range(len(cc))])
+            target_labels.extend([l for _ in range(len(tc))])
 
-            context_frames.extend(cf)
-            target_frames.extend(tf)
-
-            context_framepaths.extend(cfp)
-            target_framepaths.extend(tfp)
-
-            context_labels.extend([l for _ in range(len(cf))])
-            target_labels.extend([l for _ in range(len(tf))])
-            
-            context_video_ids.extend(cvi)
-            target_video_ids.extend(tvi)
-
-        context_set, context_labels = self.prepare_task(context_frames, context_framepaths, context_labels, context_video_ids)
-        target_set, target_labels = self.prepare_task(target_frames, target_framepaths, target_labels, target_video_ids, test_mode=self.test_mode) 
-       
+            context_clip_video_ids.extend(ccvi)
+            target_clip_video_ids.extend(tcvi)
+        
+        context_clips, context_labels = self.prepare_task(context_clips, context_labels, context_clip_video_ids)
+        target_clips, target_labels = self.prepare_task(target_clips, target_labels, target_clip_video_ids, test_mode=self.test_mode)
+        
         task_dict = { 
-                'context_set' : context_set,
+                'context_clips' : context_clips,
                 'context_labels' : context_labels,
-                'target_set' : target_set,
-                'target_labels' : target_labels
+                'target_clips' : target_clips,
+                'target_labels' : target_labels,
         }
 
         return task_dict
@@ -447,37 +394,33 @@ class ObjectEpisodicORBITDataset(ORBITDataset):
             self.context_shot_cap = 5 if way >=6 else 10
             self.target_shot_cap = 4 if way >=6 else 8
 
-        context_frames, target_frames = [], []
-        context_framepaths, target_framepaths = [], []
+        # for each object, sample context and target clips
+        context_clips, target_clips = [], []
         context_labels, target_labels = [], []
-        context_video_ids, target_video_ids = [], []
+        context_clip_video_ids, target_clip_video_ids = [], []
         for i, obj in enumerate(selected_objects):
-            context, target = self.sample_shots(self.obj2vids[obj])
+            context_videos, target_videos = self.sample_videos(self.obj2vids[obj])
+            cc, ccvi = self.sample_clips_from_videos(context_videos, self.context_num_clips)
+            tc, tcvi = self.sample_clips_from_videos(target_videos, self.target_num_clips)
 
-            cf, cfp, cvi = self.get_video_data(context, self.context_num_clips)
-            tf, tfp, tvi = self.get_video_data(target, self.target_num_clips)
+            context_clips.extend(cc)
+            target_clips.extend(tc)
+
             l = self.get_video_label(obj, label_map)
+            context_labels.extend([l for _ in range(len(cc))])
+            target_labels.extend([l for _ in range(len(tc))])
 
-            context_frames.extend(cf)
-            target_frames.extend(tf)
-
-            context_framepaths.extend(cfp)
-            target_framepaths.extend(tfp)
-
-            context_labels.extend([l for _ in range(len(cf))])
-            target_labels.extend([l for _ in range(len(tf))])
-            
-            context_video_ids.extend(cvi)
-            target_video_ids.extend(tvi)
-
-        context_set, context_labels = self.prepare_task(context_frames, context_framepaths, context_labels, context_video_ids)
-        target_set, target_labels = self.prepare_task(target_frames, target_framepaths, target_labels, target_video_ids, test_mode=self.test_mode) 
-       
+            context_clip_video_ids.extend(ccvi)
+            target_clip_video_ids.extend(tcvi)
+        
+        context_clips, context_labels = self.prepare_task(context_clips, context_labels, context_clip_video_ids)
+        target_clips, target_labels = self.prepare_task(target_clips, target_labels, target_clip_video_ids, test_mode=self.test_mode)
+        
         task_dict = { 
-                'context_set' : context_set,
+                'context_clips' : context_clips,
                 'context_labels' : context_labels,
-                'target_set' : target_set,
-                'target_labels' : target_labels
+                'target_clips' : target_clips,
+                'target_labels' : target_labels,
         }
-       
+        
         return task_dict 

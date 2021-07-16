@@ -1,12 +1,10 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT license.
 
-import os
 import torch
+import numpy as np
 from data.datasets import UserEpisodicORBITDataset, ObjectEpisodicORBITDataset
 from data.samplers import TaskSampler
-
-WORKERS=4
 
 class DatasetQueue:
     """
@@ -22,6 +20,7 @@ class DatasetQueue:
         """
         self.tasks_per_user = tasks_per_user
         self.shuffle = shuffle
+        self.num_workers = 8 
         self.num_users = None
         self.collate_fn = self.squeeze
 
@@ -32,7 +31,12 @@ class DatasetQueue:
             if isinstance(v, torch.Tensor):
                 squeezed_batch[k] = v.squeeze(0)
             elif isinstance(v, list):
-                squeezed_batch[k] = [b.squeeze(0) for b in v]
+                if all(isinstance(b, np.ndarray) for b in v):
+                    squeezed_batch[k] = v
+                elif all(isinstance(b, torch.Tensor) for b in v):
+                    squeezed_batch[k] = [b.squeeze(0) for b in v]
+            elif isinstance(v, np.ndarray):
+                squeezed_batch[k] = v
 
         return squeezed_batch
     
@@ -46,7 +50,7 @@ class DatasetQueue:
         return torch.utils.data.DataLoader(
                 dataset=self.dataset,
                 pin_memory=False,
-                num_workers=WORKERS,
+                num_workers=self.num_workers,
                 sampler=TaskSampler(self.tasks_per_user, self.num_users, self.shuffle),
                 collate_fn=self.collate_fn
                 ) 

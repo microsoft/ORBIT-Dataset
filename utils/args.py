@@ -9,7 +9,7 @@ def parse_args(learner='default'):
     parser = argparse.ArgumentParser()
    
     # default parameters
-    parser.add_argument("--checkpoint_dir", default='./checkpoints', help="Directory to save checkpoint to.")
+    parser.add_argument("--checkpoint_dir", default='./checkpoint', help="Directory to save checkpoint to.")
     parser.add_argument("--data_path", required=True, help="Path to ORBIT root directory.")
     parser.add_argument("--model_path", "-m", default=None,
                         help="Path to model to load and resume/test.")
@@ -17,7 +17,7 @@ def parse_args(learner='default'):
                         help="Whether to run training only, testing only, or both training and testing.")
     parser.add_argument("--test_set", default='test', choices=['validation', 'test'], 
                         help="Test set to sample test tasks.")
-    parser.add_argument("--feature_extractor", type=str, default="resnet18", choices=["resnet18", "efficientnetb0"],
+    parser.add_argument("--feature_extractor", type=str, default="resnet18", choices=["resnet18", "mnasnet10", "efficientnetb0"],
                         help="Feature extractor backbone (default: resnet18).")
     parser.add_argument("--learn_extractor", action="store_true",
                         help="If True, learns all parameters of feature extractor at 0.1 of learning rate.")
@@ -47,11 +47,11 @@ def parse_args(learner='default'):
                         help="Factor to subsample video by before sampling clips (default: 1).")
     parser.add_argument("--clip_length", type=int, default=8,
                         help="Number of frames to sample per clip (default: 8).")
-    parser.add_argument("--train_context_num_clips", type=int, default=4,
+    parser.add_argument("--train_context_num_clips", default=4,
                         help="Number of clips to sample per context video for a train task (default: 4).")
-    parser.add_argument("--train_target_num_clips", type=int, default=4,
+    parser.add_argument("--train_target_num_clips", default=4,
                         help="Number of clips to sample per target video for a train task (default: 4).")
-    parser.add_argument("--test_context_num_clips", type=int, default=8,
+    parser.add_argument("--test_context_num_clips", default=8,
                         help="Number of clips to sample per context video for a test/validation task (default: 8).")
     parser.add_argument("--test_target_num_clips", type=str, default='max',
                         help="Sample all overlapping clips per target video for a test/validation task (default: max).")

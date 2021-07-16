@@ -38,9 +38,9 @@ import torch.backends.cudnn as cudnn
 from data.dataloaders import DataLoader
 from models import MultiStepFewShotRecogniser
 from utils.args import parse_args
-from utils.data import unpack_task 
 from utils.ops_counter import OpsCounter
 from utils.optim import cross_entropy, init_optimizer
+from utils.data import unpack_task, attach_frame_history
 from utils.logging import print_and_log, get_log_files, stats_to_str
 from utils.eval_metrics import TrainEvaluator, ValidationEvaluator, TestEvaluator
 
@@ -113,10 +113,8 @@ class Learner:
     def init_model(self):
         model = MultiStepFewShotRecogniser(self.args)
         model._register_extra_parameters()
-        model.to(self.device)
-
-        if self.args.use_two_gpus:
-            model._distribute_model()
+        model._set_device(self.device)
+        model._send_to_device()
 
         return model
    
@@ -193,11 +191,11 @@ class Learner:
 
     def train_task(self, task_dict):
 
-        context_set, context_labels, target_set, target_labels = unpack_task(task_dict, self.device)
+        context_clips, context_labels, target_clips, target_labels = unpack_task(task_dict, self.device)
        
-        joint_context_set = torch.cat((context_set, target_set), dim=0)
+        joint_context_clips = torch.cat((context_clips, target_clips), dim=0)
         joint_context_labels = torch.cat((context_labels, target_labels), dim=0)
-        joint_context_logits = self.model.predict(joint_context_set, context=True)
+        joint_context_logits = self.model.predict(joint_context_clips, context=True)
         self.train_evaluator.update_stats(joint_context_logits, joint_context_labels) 
 
         task_loss = self.loss(joint_context_logits, joint_context_labels) / self.args.tasks_per_batch
@@ -207,25 +205,23 @@ class Learner:
         return task_loss
 
     def validate(self):
-
-        attach_frame_history_fn = self.validation_queue.dataset.attach_frame_history
-
+ 
         for step, task_dict in enumerate(self.validation_queue.get_tasks()):
-            context_set, context_labels, target_set_by_video, target_labels_by_video = unpack_task(task_dict, self.device, test_mode=True)
+            context_clips, context_labels, target_clips_by_video, target_labels_by_video = unpack_task(task_dict, self.device)
 
             # initialise finetuner model to initial state of self.model for each task
             finetuner = self.init_finetuner()
 
             # finetune for task of current user using their context set
             learning_args=(self.args.inner_learning_rate, self.loss, 'sgd', 1.0)
-            finetuner.personalise(context_set, context_labels, learning_args)
+            finetuner.personalise(context_clips, context_labels, learning_args)
 
             # loop through videos
             with torch.no_grad():
-                for target_video, target_labels in zip(target_set_by_video, target_labels_by_video):
-                    target_clips, target_labels = attach_frame_history_fn(target_video, target_labels)
-                    target_logits = finetuner.batch_predict(target_clips, self.device)
-                    self.validation_evaluator.append(target_logits, target_labels)
+                for target_video, target_labels in zip(target_clips_by_video, target_labels_by_video):
+                    target_video_clips, target_video_labels = attach_frame_history(target_video, target_labels, self.args.clip_length)
+                    target_video_logits = finetuner.batch_predict(target_video_clips)
+                    self.validation_evaluator.append(target_video_logits, target_video_labels)
             
                 if (step+1) % self.args.test_tasks_per_user == 0: # end of current user
                     _, current_user_stats = self.validation_evaluator.get_mean_stats(current_user=True)
@@ -249,33 +245,32 @@ class Learner:
         self.model = self.init_model()
         if path: # if path is None, use model as initialised in init_model()
             self.model.load_state_dict(torch.load(path, map_location=self.map_location), strict=False)
-        attach_frame_history_fn = self.test_queue.dataset.attach_frame_history 
         self.ops_counter.set_base_params(self.model)
          
         for step, task_dict in enumerate(self.test_queue.get_tasks()):
-            context_set, context_labels, target_set_by_video, target_labels_by_video = unpack_task(task_dict, self.device, test_mode=True)
+            context_clips, context_labels, target_clips_by_video, target_labels_by_video = unpack_task(task_dict, self.device)
 
             # initialise finetuner model to initial state of self.model for each task
             finetuner = self.init_finetuner()
 
             # finetune for task of current user using their context set
             learning_args=(self.args.inner_learning_rate, self.loss, 'sgd', 1.0)
-            finetuner.personalise(context_set, context_labels, learning_args, ops_counter=self.ops_counter)
+            finetuner.personalise(context_clips, context_labels, learning_args, ops_counter=self.ops_counter)
             # add task's ops to self.ops_counter
             self.ops_counter.task_complete()
 
             # loop through videos
             with torch.no_grad():
-                for target_video, target_labels in zip(target_set_by_video, target_labels_by_video):
-                    target_clips, target_labels = attach_frame_history_fn(target_video, target_labels)
-                    target_logits = finetuner.batch_predict(target_clips, self.device)
-                    self.test_evaluator.append(target_logits, target_labels)
+                for target_video, target_labels in zip(target_clips_by_video, target_labels_by_video):
+                    target_video_clips, target_video_labels = attach_frame_history(target_video, target_labels, self.args.clip_length)
+                    target_video_logits = finetuner.batch_predict(target_video_clips)
+                    self.test_evaluator.append(target_video_logits, target_video_labels)
             
                 if (step+1) % self.args.test_tasks_per_user == 0: # end of current user
                     _, current_user_stats = self.test_evaluator.get_mean_stats(current_user=True)
                     print_and_log(self.logfile, 'test user {0:}/{1:} stats: {2:}'.format(self.test_evaluator.current_user+1, self.test_queue.num_users, stats_to_str(current_user_stats)))
                     self.test_evaluator.next_user()
-        
+                
         stats_per_user, stats_per_video = self.test_evaluator.get_mean_stats()
         stats_per_user_str, stats_per_video_str = stats_to_str(stats_per_user), stats_to_str(stats_per_video)
         mean_ops_stats = self.ops_counter.get_mean_stats()

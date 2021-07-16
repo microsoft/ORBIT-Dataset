@@ -30,6 +30,7 @@ SOFTWARE.
 """
 
 import torch
+import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -40,7 +41,7 @@ from models.normalisation_layers import TaskNorm
 from models.set_encoder import SetEncoder, NullSetEncoder
 from models.classifiers import LinearClassifier, VersaClassifier, PrototypicalClassifier, MahalanobisClassifier
 from utils.optim import init_optimizer
-from utils.data import ListBatcher, select_batch
+from utils.data import ListBatcher, FrameLoader, attach_frame_history
 
 class FewShotRecogniser(nn.Module):
     """
@@ -102,6 +103,21 @@ class FewShotRecogniser(nn.Module):
         self.inner_batcher = ListBatcher(self.args.batch_size)
         self.outer_batcher = ListBatcher(self.args.batch_size)
 
+        # configure frame loader
+        self.frame_loader = FrameLoader(self.args.clip_length, self.args.frame_size)
+
+    def _set_device(self, device):
+        self.device = device
+    
+    def _send_to_device(self):
+        """
+        Function that moves whole model to self.device.
+        :return: Nothing.
+        """
+        self.to(self.device)
+        if self.args.use_two_gpus:
+            self._distribute_model()
+
     def _distribute_model(self):
         """
         Function that moves the feature extractor and feature adapter to the second GPU.
@@ -110,38 +126,37 @@ class FewShotRecogniser(nn.Module):
         self.feature_extractor.cuda(1)
         self.feature_adapter.cuda(1)
     
-    def batch_predict(self, target_clips, device=None):
+    def batch_predict(self, target_clip_paths):
         """
         Function that processes target clips in batches to get logits over object classes.
-        :param target_clips: (torch.Tensor) Target clips, each composed of self.args.clip_length contiguous frames.
-        :param device: (torch.device) Device to move target_clips to.
-        :return: (torch.Tensor) Logits over object classes for each clip in target_clips.
+        :param target_clip_paths: (np.ndarray) Target clip paths, each composed of self.args.clip_length contiguous frames.
+        :return: (torch.Tensor) Logits over object classes for each clip in target_clips_paths.
         """
-        num_batches = self.outer_batcher._get_number_of_batches(len(target_clips))
+        num_batches = self.outer_batcher._get_number_of_batches(len(target_clip_paths))
         target_logits = []
         for batch_id in range(num_batches):
             batch_range = self.outer_batcher._get_batch_indices(batch_id)
-            batch_clips = select_batch([target_clips], batch_range=batch_range, device=device)
-            batch_logits = self.predict(batch_clips)
+            #batch_clips = self.frame_loader(target_clip_paths[batch_range], device=self.device)
+            batch_logits = self.predict(target_clip_paths[batch_range])
             target_logits.append(batch_logits)
         return torch.cat(target_logits, dim=0)
-
-    def _get_features(self, clips, feature_adapter_params, ops_counter=None, context=False):
+    
+    def _get_features(self, clip_paths, feature_adapter_params, ops_counter=None, context=False):
         """
         Function that passes clips through an adapted feature extractor to get adapted (and flattened) frame features.
-        :param clips: (torch.Tensor) Clips, each composed of self.args.clip_length contiguous frames.
+        :param clip_paths: (np.ndarray) Clip paths, each composed of self.args.clip_length contiguous frames.
         :param feature_adapter_params: (list::dict::torch.Tensor or list::dict::list::torch.Tensor) Parameters of all FiLM layers.
         :param ops_counter: (utils.OpsCounter or None) Object that counts operations performed.
         :param context: (bool) True if clips are from context videos, otherwise False.
         :return: (torch.Tensor) Adapted frame features flattened across all clips.
         """ 
         features = []
-        num_batches = self.inner_batcher._get_number_of_batches(clips.size(0))
+        num_batches = self.inner_batcher._get_number_of_batches(len(clip_paths))
         self._set_model_state(context)
 
         for batch_id in range(num_batches):
             batch_range = self.inner_batcher._get_batch_indices(batch_id)
-            batch_clips = clips[batch_range]
+            batch_clips = self.frame_loader(clip_paths[batch_range], device=self.device)
             if self.args.use_two_gpus:
                 batch_clips = batch_clips.cuda(1)
                 batch_features = self.feature_extractor(batch_clips, feature_adapter_params).cuda(0)
@@ -167,20 +182,20 @@ class FewShotRecogniser(nn.Module):
         
         return self.feature_adapter(task_embedding)
    
-    def _get_task_embedding(self, context_clips, ops_counter=None, reduction='mean'):
+    def _get_task_embedding(self, context_clip_paths, ops_counter=None, reduction='mean'):
         """
         Function that passes all of a task's context set through the set encoder to get a task embedding.
-        :param context_clips: (torch.Tensor) Context clips, each composed of self.args.clip_length contiguous frames.
+        :param context_clip_paths: (np.ndarray) Context clip paths, each composed of self.args.clip_length contiguous frames.
         :param ops_counter: (utils.OpsCounter or None) Object that counts operations performed.
         :param reduction: (str) Method to aggregate clip encodings from self.set_encoder.
         :return: (torch.Tensor or None) Task embedding.
         """ 
         reps = []
-        num_batches = self.inner_batcher._get_number_of_batches(context_clips.size(0))
+        num_batches = self.inner_batcher._get_number_of_batches(len(context_clip_paths))
         
         for batch_id in range(num_batches):
             batch_range = self.inner_batcher._get_batch_indices(batch_id)
-            batch_clips = context_clips[batch_range]
+            batch_clips = self.frame_loader(context_clip_paths[batch_range], device=self.device)
             batch_reps = self.set_encoder(batch_clips)
 
             if ops_counter:
@@ -260,70 +275,68 @@ class MultiStepFewShotRecogniser(FewShotRecogniser):
         """
         FewShotRecogniser.__init__(self, args)
 
-    def personalise(self, context_clips, context_labels, learning_args, ops_counter=None):
+    def personalise(self, context_clip_paths, context_labels, learning_args, ops_counter=None):
         """
         Function that learns a new task by taking a fixed number of gradient steps on the task's context set. For each task, a new linear classification layer is added (and FiLM layers if self.args.adapt_features == True).
-        :param context_clips: (torch.Tensor) Context clips, each composed of self.args.clip_length contiguous frames.
+        :param context_clip_paths: (np.ndarray) Context clip paths, each composed of self.args.clip_length contiguous frames.
         :param context_labels: (torch.Tensor) Video-level labels for each context clip.
         :param learning_args: (float, func, str, float) Learning hyper-parameters including learning rate, loss function, optimiser type and factor to scale the extractor's learning rate.
         :param ops_counter: (utils.OpsCounter or None) Object that counts operations performed.
         :return: Nothing.
         """ 
-        device = context_clips.device
         lr, loss_fn, optimizer_type, extractor_scale_factor = learning_args
         num_classes = len(torch.unique(context_labels))
-        self.configure_classifier(num_classes, device, init_zeros=True)
-        self.configure_feature_adapter(device)
+        self.configure_classifier(num_classes, init_zeros=True)
+        self.configure_feature_adapter()
         inner_loop_optimizer = init_optimizer(self, lr, optimizer_type, extractor_scale_factor)
-        num_context_batches = self.outer_batcher._get_number_of_batches(len(context_labels))
+        num_context_batches = self.outer_batcher._get_number_of_batches(len(context_clip_paths))
 
         for _ in range(self.args.num_grad_steps): 
             for batch_id in range(num_context_batches):
                 batch_range = self.outer_batcher._get_batch_indices(batch_id)
-                batch_context_set, batch_context_labels = select_batch([context_clips, context_labels], batch_range)
-                batch_context_logits = self.predict(batch_context_set, ops_counter=ops_counter, context=True)
+                batch_context_clips = self.frame_loader(context_clip_paths[batch_range], device=self.device)
+                batch_context_labels = context_labels[batch_range].to(self.device)
+                batch_context_logits = self.predict(batch_context_clips, ops_counter=ops_counter, context=True)
                 batch_context_loss = loss_fn(batch_context_logits, batch_context_labels)
                 batch_context_loss.backward()
                  
             inner_loop_optimizer.step()
             inner_loop_optimizer.zero_grad()
     
-    def predict(self, clips, ops_counter=None, context=False):
+    def predict(self, clip_paths, ops_counter=None, context=False):
         """
         Function that processes a batch of clips to get logits over object classes for each clip.
-        :param clips: (torch.Tensor) Clips, each composed of self.args.clip_length contiguous frames.
+        :param clip_paths: (np.ndarray) Clip paths, each composed of self.args.clip_length contiguous frames.
         :param ops_counter: (utils.OpsCounter or None) Object that counts operations performed. 
         :param context: (bool) True if a context set is being processed, otherwise False.
         :return: (torch.Tensor) Logits over object classes for each clip in clips.
         """
-        task_embedding = self._get_task_embedding(clips, ops_counter)
+        task_embedding = self._get_task_embedding(clip_paths, ops_counter)
         self.feature_adapter_params = self._get_feature_adapter_params(task_embedding, ops_counter)
-        features = self._get_features(clips, self.feature_adapter_params, ops_counter, context=context)
+        features = self._get_features(clip_paths, self.feature_adapter_params, ops_counter, context=context)
         features = self._pool_features(features, ops_counter)
         return self.classifier.predict(features)
     
-    def personalise_with_lite(self, context_clips, context_labels):
+    def personalise_with_lite(self, context_clip_paths, context_labels):
         NotImplementedError
 
-    def configure_classifier(self, num_classes, device, init_zeros=False):
+    def configure_classifier(self, num_classes, init_zeros=False):
         """
         Function that initialises and appends a linear classification layer to the model.
         :param num_classes: (int) Number of classes in classification layer.
-        :param device: (torch.device) Device to move classification layer to.
         :init_zeros: (bool) If True, initialise classification layer with zeros, otherwise use Kaiming uniform.
         :return: Nothing.
         """
-        self.classifier.configure(num_classes, device, init_zeros=init_zeros)
+        self.classifier.configure(num_classes, self.device, init_zeros=init_zeros)
     
-    def configure_feature_adapter(self, device):
+    def configure_feature_adapter(self):
         """
         Function that initialises learnable FiLM layers if self.args.adapt_features == True.
-        :param device: (torch.device) Device to move FiLM layers to.
         :return: Nothing.
         """
         if self.args.adapt_features and self.args.feature_adaptation_method == 'learn':
             self.feature_adapter._init_layers()
-            self.feature_adapter.to(device)
+            self.feature_adapter.to(self.device)
      
 class SingleStepFewShotRecogniser(FewShotRecogniser):
     """
@@ -337,84 +350,84 @@ class SingleStepFewShotRecogniser(FewShotRecogniser):
         """
         FewShotRecogniser.__init__(self, args)
 
-    def personalise(self, context_clips, context_labels, ops_counter=None):
+    def personalise(self, context_clip_paths, context_labels, ops_counter=None):
         """
         Function that learns a new task by performing a forward pass of the task's context set.
-        :param context_clips: (torch.Tensor) Context clips, each composed of self.args.clip_length contiguous frames.
+        :param context_clip_paths: (np.ndarray) Context clip paths, each composed of self.args.clip_length contiguous frames.
         :param context_labels: (torch.Tensor) Video-level labels for each context clip.
         :param ops_counter: (utils.OpsCounter or None) Object that counts operations performed.
         :return: Nothing.
         """ 
-        task_embedding = self._get_task_embedding(context_clips, ops_counter)
+        task_embedding = self._get_task_embedding(context_clip_paths, ops_counter)
         self.feature_adapter_params = self._get_feature_adapter_params(task_embedding, ops_counter)
-        context_features = self._get_features(context_clips, self.feature_adapter_params, ops_counter, context=True)
+        context_features = self._get_features(context_clip_paths, self.feature_adapter_params, ops_counter, context=True)
         context_features = self._pool_features(context_features, ops_counter)
         self.classifier.configure(context_features, context_labels, ops_counter)
        
-    def personalise_with_lite(self, context_clips, context_labels):
+    def personalise_with_lite(self, context_clip_paths, context_labels):
         """
         Function that learns a new task by performning a forward pass of the task's context set with LITE. Namely a random subset of the context set (self.args.num_lite_samples) is processed with back-propagation enabled, while the remainder is processed with back-propagation disabled.
-        :param context_clips: (torch.Tensor) Context clips, each composed of self.args.clip_length contiguous frames.
+        :param context_clip_paths: (np.ndarray) Context clip paths, each composed of self.args.clip_length contiguous frames.
         :param context_labels: (torch.Tensor) Video-level labels for each context clip.
         :return: Nothing.
         """ 
-        shuffled_idxs = torch.randperm(len(context_clips), device=context_clips.device)
-        task_embedding = self._get_task_embedding_with_lite(context_clips, shuffled_idxs)
+        shuffled_idxs = np.random.permutation(len(context_clip_paths))
+        task_embedding = self._get_task_embedding_with_lite(context_clip_paths, shuffled_idxs)
         self.feature_adapter_params = self._get_feature_adapter_params(task_embedding)
-        context_features = self._get_pooled_features_with_lite(context_clips, shuffled_idxs) 
+        context_features = self._get_pooled_features_with_lite(context_clip_paths, shuffled_idxs) 
         self.classifier.configure(context_features, context_labels[shuffled_idxs])
     
-    def _cache_context_outputs(self, context_clips):
+    def _cache_context_outputs(self, context_clip_paths):
         """
         Function that performs a forward pass with a task's entire context set with back-propagation disabled and caches the individual 1) encodings from the set encoder and 2) adapted features from the adapted feature extractor, for each clip.
-        :param context_clips: (torch.Tensor) Context clips composed of self.args.clip_length contiguous frames.
+        :param context_clip_paths: (np.ndarray) Context clip paths, each composed of self.args.clip_length contiguous frames.
         :return: Nothing.
         """ 
         with torch.set_grad_enabled(False):
             # cache encoding for each clip from self.set_encoder
-            self.cached_set_encoder_reps = self._get_task_embedding(context_clips, reduction='none')
+            self.cached_set_encoder_reps = self._get_task_embedding(context_clip_paths, reduction='none')
 
             # get feature adapter parameters
             task_embedding = self.set_encoder.mean_pool(self.cached_set_encoder_reps)
             feature_adapter_params = self._get_feature_adapter_params(task_embedding)
 
             # cache adapted features for each clip
-            context_features = self._get_features(context_clips, feature_adapter_params, context=True)
+            context_features = self._get_features(context_clip_paths, feature_adapter_params, context=True)
             self.cached_context_features = self._pool_features(context_features)
        
-    def _get_task_embedding_with_lite(self, context_clips, idxs):
+    def _get_task_embedding_with_lite(self, context_clip_paths, idxs):
         """
         Function that passes all of a task's context set through the set encoder to get a task embedding with LITE.
-        :param context_clips: (torch.Tensor) Context clips, each composed of self.args.clip_length contiguous frames.
+        :param context_clip_paths: (np.ndarray) Context clip paths, each composed of self.args.clip_length contiguous frames.
         :param idxs: (torch.Tensor) Indicies of elements in context_clips to process with back-propagation enabled.
         :return: (torch.Tensor or None) Task embedding.
         """ 
         if isinstance(self.set_encoder, NullSetEncoder):
             return None
         H = self.args.num_lite_samples
-        task_embedding_with_grads = self._get_task_embedding(context_clips[idxs][:H], reduction='none')
+        task_embedding_with_grads = self._get_task_embedding(context_clip_paths[idxs][:H], reduction='none')
         task_embedding_without_grads = self.cached_set_encoder_reps[idxs][H:]
         return torch.cat((task_embedding_with_grads, task_embedding_without_grads)).mean(dim=0)
         
-    def _get_pooled_features_with_lite(self, context_clips, idxs):
+    def _get_pooled_features_with_lite(self, context_clip_paths, idxs):
         """
         Function that gets adapted clip features for a task's context set with LITE.
-        :param context_clips: (torch.Tensor) Context clips, each composed of self.args.clip_length contiguous frames.
+        :param context_clip_paths: (np.ndarray) Context clip paths, each composed of self.args.clip_length contiguous frames.
         :param idxs: (torch.Tensor) Indicies of elements in context_clips to process with back-propagation enabled.
         :return: (torch.Tensor) Adapted frame features pooled per clip i.e. as (num_clips) x (feat_dim).
         """ 
         H = self.args.num_lite_samples
-        context_features_with_grads = self._get_features(context_clips[idxs][:H], self.feature_adapter_params, context=True)
+        context_features_with_grads = self._get_features(context_clip_paths[idxs][:H], self.feature_adapter_params, context=True)
         context_features_with_grads = self._pool_features(context_features_with_grads)
         context_features_without_grads = self.cached_context_features[idxs][H:]
         return torch.cat((context_features_with_grads, context_features_without_grads)) 
     
-    def predict(self, target_clips):
+    def predict(self, target_clip_paths):
         """
         Function that processes a batch of target clips to get logits over object classes for each clip.
-        :param target_clips: (torch.Tensor) Target clips, each composed of self.args.clip_length contiguous frames.
+        :param target_clip_paths: (np.ndarray) Target clip paths, each composed of self.args.clip_length contiguous frames.
         :return: (torch.Tensor) Logits over object classes for each clip in target_clips.
         """
-        target_features = self._get_features(target_clips, self.feature_adapter_params)
+        target_features = self._get_features(target_clip_paths, self.feature_adapter_params)
         target_features = self._pool_features(target_features) 
         return self.classifier.predict(target_features) 
