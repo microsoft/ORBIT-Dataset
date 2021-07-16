@@ -87,7 +87,6 @@ class Learner:
         dataset_info = {
             'mode': self.args.mode,
             'data_path': self.args.data_path,
-            'frame_size': self.args.frame_size,
             'train_object_cap': self.args.train_object_cap,
             'with_train_shot_caps': self.args.with_train_shot_caps,
             'with_cluster_labels': False,

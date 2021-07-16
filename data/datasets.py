@@ -6,7 +6,6 @@ import glob
 import json
 import torch
 import random
-import torchvision
 import numpy as np
 from torch.utils.data import Dataset
 
@@ -14,11 +13,10 @@ class ORBITDataset(Dataset):
     """
     Base class for ORBIT dataset.
     """
-    def __init__(self, root, frame_size, object_cap, way_method, clip_length, subsample_factor, test_mode, with_cluster_labels, with_caps):
+    def __init__(self, root, object_cap, way_method, clip_length, subsample_factor, test_mode, with_cluster_labels, with_caps):
         """
         Creates instance of ORBITDataset.
         :param root: (str) Path to train/validation/test folder in ORBIT dataset root folder.
-        :param frame_size: (int) Size of video frames.
         :param object_cap: (int or str) Cap on number of objects per user. If 'max', leave uncapped.
         :param way_method: (str) If 'random', select a random number of objects per user. If 'max', select all objects per user.
         :param clip_length: (int) Number of contiguous frames per video clip.
@@ -29,7 +27,6 @@ class ORBITDataset(Dataset):
         :return: Nothing.
         """
         self.root = root
-        self.frame_size = frame_size
         self.object_cap = object_cap
         self.way_method = way_method
         self.clip_length = clip_length
@@ -265,11 +262,10 @@ class UserEpisodicORBITDataset(ORBITDataset):
     """
     Class for user-centric episodic sampling of ORBIT dataset.
     """
-    def __init__(self, root, frame_size, object_cap, way_method, shot_methods, shots, video_types, clip_length, num_clips, subsample_factor, test_mode, with_cluster_labels, with_caps):
+    def __init__(self, root, object_cap, way_method, shot_methods, shots, video_types, clip_length, num_clips, subsample_factor, test_mode, with_cluster_labels, with_caps):
         """
         Creates instance of UserEpisodicORBITDataset.
         :param root: (str) Path to train/validation/test folder in ORBIT dataset root folder.
-        :param frame_size: (int) Size of video frames.
         :param object_cap: (int or str) Cap on number of objects per user. If 'max', leave uncapped.
         :param way_method: (str) If 'random', select a random number of objects per user. If 'max', select all objects per user.
         :param shot_methods: (str, str) Method for sampling videos for context and target sets.
@@ -283,7 +279,7 @@ class UserEpisodicORBITDataset(ORBITDataset):
         :param with_caps: (bool) If True, impose caps on the number of videos per object, otherwise leave uncapped.
         :return: Nothing.
         """
-        ORBITDataset.__init__(self, root, frame_size, object_cap, way_method, clip_length, subsample_factor, test_mode, with_cluster_labels, with_caps)
+        ORBITDataset.__init__(self, root, object_cap, way_method, clip_length, subsample_factor, test_mode, with_cluster_labels, with_caps)
         
         self.shot_context, self.shot_target = shots
         self.shot_method_context, self.shot_method_target = shot_methods
@@ -348,11 +344,10 @@ class ObjectEpisodicORBITDataset(ORBITDataset):
     """
     Class for object-centric episodic sampling of ORBIT dataset.
     """
-    def __init__(self, root, frame_size, object_cap, way_method, shot_methods, shots, video_types, clip_length, num_clips, subsample_factor, test_mode, with_cluster_labels, with_caps):
+    def __init__(self, root, object_cap, way_method, shot_methods, shots, video_types, clip_length, num_clips, subsample_factor, test_mode, with_cluster_labels, with_caps):
         """
         Creates instance of ObjectEpisodicORBITDataset.
         :param root: (str) Path to train/validation/test folder in ORBIT dataset root folder.
-        :param frame_size: (int) Size of video frames.
         :param object_cap: (int or str) Cap on number of objects per user. If 'max', leave uncapped.
         :param way_method: (str) If 'random', select a random number of objects per user. If 'max', select all objects per user.
         :param shot_methods: (str, str) Method for sampling videos for context and target sets.
@@ -366,7 +361,7 @@ class ObjectEpisodicORBITDataset(ORBITDataset):
         :param with_caps: (bool) If True, impose caps on the number of videos per object, otherwise leave uncapped.
         :return: Nothing.
         """
-        ORBITDataset.__init__(self, root, frame_size, object_cap, way_method, clip_length, subsample_factor, test_mode, with_cluster_labels, with_caps)
+        ORBITDataset.__init__(self, root, object_cap, way_method, clip_length, subsample_factor, test_mode, with_cluster_labels, with_caps)
         
         self.shot_context, self.shot_target = shots
         self.shot_method_context, self.shot_method_target = shot_methods

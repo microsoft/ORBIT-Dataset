@@ -56,13 +56,13 @@ class DatasetQueue:
                 ) 
     
 class UserEpisodicDatasetQueue(DatasetQueue):
-    def __init__(self, root, frame_size, object_cap, way_method, shot_method, shots, video_types, clip_length, num_clips, subsample_factor, tasks_per_user, test_mode, with_cluster_labels, with_caps, shuffle):
+    def __init__(self, root, object_cap, way_method, shot_method, shots, video_types, clip_length, num_clips, subsample_factor, tasks_per_user, test_mode, with_cluster_labels, with_caps, shuffle):
         DatasetQueue.__init__(self, tasks_per_user, shuffle)
-        self.dataset = UserEpisodicORBITDataset(root, frame_size, object_cap, way_method, shot_method, shots, video_types, clip_length, num_clips, subsample_factor, test_mode, with_cluster_labels, with_caps)
+        self.dataset = UserEpisodicORBITDataset(root, object_cap, way_method, shot_method, shots, video_types, clip_length, num_clips, subsample_factor, test_mode, with_cluster_labels, with_caps)
         self.num_users = self.dataset.num_users
     
 class ObjectEpisodicDatasetQueue(DatasetQueue):
-    def __init__(self, root, frame_size, object_cap, way_method, shot_method, shots, video_types, clip_length, num_clips, subsample_factor, tasks_per_user, test_mode, with_cluster_labels, with_caps, shuffle):
+    def __init__(self, root, object_cap, way_method, shot_method, shots, video_types, clip_length, num_clips, subsample_factor, tasks_per_user, test_mode, with_cluster_labels, with_caps, shuffle):
         DatasetQueue.__init__(self, tasks_per_user, shuffle)
-        self.dataset = ObjectEpisodicORBITDataset(root, frame_size, object_cap, way_method, shot_method, shots, video_types, clip_length, num_clips, subsample_factor, test_mode, with_cluster_labels, with_caps)
+        self.dataset = ObjectEpisodicORBITDataset(root, object_cap, way_method, shot_method, shots, video_types, clip_length, num_clips, subsample_factor, test_mode, with_cluster_labels, with_caps)
         self.num_users = self.dataset.num_users    
