@@ -136,7 +136,6 @@ class FewShotRecogniser(nn.Module):
         target_logits = []
         for batch_id in range(num_batches):
             batch_range = self.outer_batcher._get_batch_indices(batch_id)
-            #batch_clips = self.frame_loader(target_clip_paths[batch_range], device=self.device)
             batch_logits = self.predict(target_clip_paths[batch_range])
             target_logits.append(batch_logits)
         return torch.cat(target_logits, dim=0)
@@ -213,7 +212,7 @@ class FewShotRecogniser(nn.Module):
         :return: (torch.Tensor) Frame features pooled per clip i.e. as (num_clips) x (feat_dim).
         """ 
         if ops_counter:
-            ops_counter.add_macs(features.size(0) * features.size(1) * self.args.clip_length)
+            ops_counter.add_macs(features.size(0) * features.size(1))
         return self.frame_pooler(features)
     
     def _freeze_extractor(self):
