@@ -106,7 +106,7 @@ class ORBITDataset(Dataset):
         """ 
         if self.context_type == self.target_type: # context = clean; target = held-out clean
             num_context_avail = len(object_videos[self.context_type])
-            split = min(self.shot_context, num_context_avail-1) # leave at least 1 target video
+            split = min(5, num_context_avail-1) # minimum of 5 context, unless not enough then leave at least 1 target video and use remaining as context
             context = self.choose_videos(object_videos[self.context_type][:split], self.shot_context, self.shot_method_context, self.context_shot_cap)
             target = self.choose_videos(object_videos[self.context_type][split:], self.shot_target, self.shot_method_target, self.target_shot_cap)
         else: # context = clean; target = clutter
