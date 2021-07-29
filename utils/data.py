@@ -4,7 +4,9 @@
 import torch
 import numpy as np
 import torch.nn as nn
-import data.transforms as dt
+from PIL import Image
+import torchvision.transforms as transforms
+from torch.utils.data import Dataset, DataLoader
 
 class ListBatcher():
     def __init__(self, batch_size):
@@ -30,30 +32,39 @@ class ListBatcher():
         self.batch_size = batch_size
         self.list_size = 0
 
-class FrameLoader(nn.Module):
-    """
-    Class to load frames (organised by clip) from disk into a tensor.
-    """
-    def __init__(self, clip_length, frame_size):
+class DatasetFromClipPaths(Dataset):
+    def __init__(self, clip_paths):
         super().__init__()
-        self.clip_length = clip_length
-        self.frame_size = frame_size
-        self.transformation = dt.frame_transform
+        self.clip_paths = clip_paths
+        imagenet_normalise = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        self.transform = transforms.Compose([
+                                transforms.ToTensor(),
+                                imagenet_normalise
+                                ])
+        self.loader = self.load_frame
 
-    def forward(self, frame_paths, device):
-        """ 
-        Function to load frames from disk and return them as a tensor of num_clips x self.clip_length x 3 x self.frame_size x self.frame_size.
-        :param frame_paths: (np.ndarray) Frame paths organised as clips of self.clip_length frames.
-        :param device: (torch.device) Device to load frames to.
-        :return: (torch.Tensor) Tensor of transformed frame data corresponding to frame_paths.
-    """ 
-        num_clips = len(frame_paths)
-        frames = torch.zeros(num_clips, self.clip_length, 3, self.frame_size, self.frame_size, device=device)
-        for c in range(num_clips):
-            for f in range(self.clip_length):
-                frames[c, f] = self.transformation(frame_paths[c,f])
- 
-        return frames
+    def __getitem__(self, index):
+        clip = []
+        for frame_path in self.clip_paths[index]:
+            frame = self.loader(frame_path)
+            clip.append(self.transform(frame))
+        return torch.stack(clip, dim=0)
+
+    def load_frame(self, frame_path):
+        with open(frame_path, 'rb') as f:
+            frame = Image.open(f)
+            return frame.convert('RGB')
+
+    def __len__(self):
+        return len(self.clip_paths)
+
+def get_clip_loader(clip_paths, batch_size):
+    clips_dataset = DatasetFromClipPaths(clip_paths)
+
+    return DataLoader(clips_dataset,
+                      batch_size=batch_size,
+                      num_workers=4,
+                      pin_memory=True)
 
 def attach_frame_history(frame_paths, labels, clip_length):
     """

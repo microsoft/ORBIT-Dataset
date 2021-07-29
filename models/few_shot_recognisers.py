@@ -41,7 +41,7 @@ from models.normalisation_layers import TaskNorm
 from models.set_encoder import SetEncoder, NullSetEncoder
 from models.classifiers import LinearClassifier, VersaClassifier, PrototypicalClassifier, MahalanobisClassifier
 from utils.optim import init_optimizer
-from utils.data import ListBatcher, FrameLoader, attach_frame_history
+from utils.data import ListBatcher, get_clip_loader
 
 class FewShotRecogniser(nn.Module):
     """
@@ -99,12 +99,8 @@ class FewShotRecogniser(nn.Module):
         # configure frame pooler
         self.frame_pooler = MeanPooler(T=self.args.clip_length)
 
-        # configure batchers
-        self.inner_batcher = ListBatcher(self.args.batch_size)
-        self.outer_batcher = ListBatcher(self.args.batch_size)
-
-        # configure frame loader
-        self.frame_loader = FrameLoader(self.args.clip_length, self.args.frame_size)
+        # configure batcher
+        self.batcher = ListBatcher(self.args.batch_size)
 
     def _set_device(self, device):
         self.device = device
@@ -132,10 +128,10 @@ class FewShotRecogniser(nn.Module):
         :param target_clip_paths: (np.ndarray) Target clip paths, each composed of self.args.clip_length contiguous frames.
         :return: (torch.Tensor) Logits over object classes for each clip in target_clips_paths.
         """
-        num_batches = self.outer_batcher._get_number_of_batches(len(target_clip_paths))
+        num_batches = self.batcher._get_number_of_batches(len(target_clip_paths))
         target_logits = []
         for batch_id in range(num_batches):
-            batch_range = self.outer_batcher._get_batch_indices(batch_id)
+            batch_range = self.batcher._get_batch_indices(batch_id)
             batch_logits = self.predict(target_clip_paths[batch_range])
             target_logits.append(batch_logits)
         return torch.cat(target_logits, dim=0)
@@ -150,12 +146,10 @@ class FewShotRecogniser(nn.Module):
         :return: (torch.Tensor) Adapted frame features flattened across all clips.
         """ 
         features = []
-        num_batches = self.inner_batcher._get_number_of_batches(len(clip_paths))
         self._set_model_state(context)
-
-        for batch_id in range(num_batches):
-            batch_range = self.inner_batcher._get_batch_indices(batch_id)
-            batch_clips = self.frame_loader(clip_paths[batch_range], device=self.device)
+        clip_loader = get_clip_loader(clip_paths, self.args.batch_size)
+        for batch_clips in clip_loader:
+            batch_clips = batch_clips.to(self.device, non_blocking=True)
             if self.args.use_two_gpus:
                 batch_clips = batch_clips.cuda(1)
                 batch_features = self.feature_extractor(batch_clips, feature_adapter_params).cuda(0)
@@ -190,11 +184,9 @@ class FewShotRecogniser(nn.Module):
         :return: (torch.Tensor or None) Task embedding.
         """ 
         reps = []
-        num_batches = self.inner_batcher._get_number_of_batches(len(context_clip_paths))
-        
-        for batch_id in range(num_batches):
-            batch_range = self.inner_batcher._get_batch_indices(batch_id)
-            batch_clips = self.frame_loader(context_clip_paths[batch_range], device=self.device)
+        clip_loader = get_clip_loader(context_clip_paths, self.args.batch_size)
+        for batch_clips in clip_loader: 
+            batch_clips = batch_clips.to(self.device, non_blocking=True)
             batch_reps = self.set_encoder(batch_clips)
 
             if ops_counter:
@@ -288,14 +280,13 @@ class MultiStepFewShotRecogniser(FewShotRecogniser):
         self.configure_classifier(num_classes, init_zeros=True)
         self.configure_feature_adapter()
         inner_loop_optimizer = init_optimizer(self, lr, optimizer_type, extractor_scale_factor)
-        num_context_batches = self.outer_batcher._get_number_of_batches(len(context_clip_paths))
+        num_context_batches = self.batcher._get_number_of_batches(len(context_clip_paths))
 
         for _ in range(self.args.num_grad_steps): 
             for batch_id in range(num_context_batches):
-                batch_range = self.outer_batcher._get_batch_indices(batch_id)
-                batch_context_clips = self.frame_loader(context_clip_paths[batch_range], device=self.device)
+                batch_range = self.batcher._get_batch_indices(batch_id)
                 batch_context_labels = context_labels[batch_range].to(self.device)
-                batch_context_logits = self.predict(batch_context_clips, ops_counter=ops_counter, context=True)
+                batch_context_logits = self.predict(context_clip_paths[batch_range], ops_counter=ops_counter, context=True)
                 batch_context_loss = loss_fn(batch_context_logits, batch_context_labels)
                 batch_context_loss.backward()
                  
