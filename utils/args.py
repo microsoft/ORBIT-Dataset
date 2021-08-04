@@ -119,6 +119,7 @@ def verify_args(learner, args):
 
     if learner == 'gradient-learner':
         if args.with_lite:
-            sys.exit('error: --with_lite is not implemented for MAML, or not necessary for FineTuner')
+            print('warning: --with_lite is not relevant for MAML and FineTuner and normal batching is used instead')
+        
         if args.adapt_features and args.feature_adaptation_method == 'generate':
             sys.exit('error: MAML/FineTuner are not generation-based methods; use --feature_adaptation_method learn')
