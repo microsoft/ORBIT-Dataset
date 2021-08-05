@@ -40,7 +40,7 @@ from models import SingleStepFewShotRecogniser
 from utils.args import parse_args
 from utils.ops_counter import OpsCounter
 from utils.optim import cross_entropy, init_optimizer
-from utils.data import ListBatcher, unpack_task, attach_frame_history
+from utils.data import get_clip_loader, unpack_task, attach_frame_history
 from utils.logging import print_and_log, get_log_files, stats_to_str
 from utils.eval_metrics import TrainEvaluator, ValidationEvaluator, TestEvaluator
 
@@ -111,8 +111,6 @@ class Learner:
         self.validation_queue = dataloader.get_validation_queue()
         self.test_queue = dataloader.get_test_queue()
         
-        self.batcher = ListBatcher(self.args.batch_size)
-
     def init_model(self):
         self.model = SingleStepFewShotRecogniser(self.args)
         self.model._register_extra_parameters()
@@ -141,12 +139,15 @@ class Learner:
                 train_tasks = self.train_queue.get_tasks()
                 total_steps = len(train_tasks)
                 for step, task_dict in enumerate(train_tasks):
+
+                    t1 = time.time()
                     task_loss = self.train_task_fn(task_dict)
+                    task_time = time.time() - t1
                     losses.append(task_loss.detach())
                     
                     if self.args.print_by_step:
                         current_stats_str = stats_to_str(self.train_evaluator.get_current_stats())
-                        print_and_log(self.logfile, 'epoch [{}/{}][{}/{}], train loss: {:.7f}, {:}'.format(epoch+1, self.args.epochs, step+1, total_steps, task_loss.item(), current_stats_str))
+                        print_and_log(self.logfile, 'epoch [{}/{}][{}/{}], train loss: {:.7f}, {:}, time/task: {:d}m{:02d}s'.format(epoch+1, self.args.epochs, step+1, total_steps, task_loss.item(), current_stats_str.strip(), int(task_time / 60), int(task_time % 60)))
 
                     if ((step + 1) % self.args.tasks_per_batch == 0) or (step == (total_steps - 1)):
                         self.optimizer.step()
@@ -204,13 +205,12 @@ class Learner:
         self.model._cache_context_outputs(context_clips)
 
         task_loss = 0
-        num_target_batches = self.batcher._get_number_of_batches(len(target_labels))
-        for batch_id in range(num_target_batches):
-            self.model.personalise_with_lite(context_clips, context_labels) 
-            batch_range = self.batcher._get_batch_indices(batch_id)
-            batch_target_clips = target_clips[batch_range]
-            batch_target_labels = target_labels[batch_range]
-            batch_target_logits = self.model.predict(batch_target_clips)
+        target_clip_loader = get_clip_loader((target_clips, target_labels), self.args.batch_size, with_labels=True)
+        for batch_target_clips, batch_target_labels in target_clip_loader:
+            self.model.personalise_with_lite(context_clips, context_labels)
+            batch_target_clips = batch_target_clips.to(device=self.device)
+            batch_target_labels = batch_target_labels.to(device=self.device)
+            batch_target_logits = self.model.predict_a_batch(batch_target_clips)
             self.train_evaluator.update_stats(batch_target_logits, batch_target_labels)
            
             loss_scaling = len(context_labels) / (self.args.num_lite_samples * self.args.tasks_per_batch)
@@ -237,7 +237,7 @@ class Learner:
                 # loop through each target video
                 for target_video, target_labels in zip(target_clips_by_video, target_labels_by_video):
                     target_video_clips, target_video_labels = attach_frame_history(target_video, target_labels, self.args.clip_length)
-                    target_video_logits = self.model.batch_predict(target_video_clips)
+                    target_video_logits = self.model.predict(target_video_clips)
                     self.validation_evaluator.append(target_video_logits, target_video_labels)
 
                 # reset task's params
@@ -270,13 +270,15 @@ class Learner:
         with torch.no_grad():
             for step, task_dict in enumerate(self.test_queue.get_tasks()):
                 context_clips, context_labels, target_clips_by_video, target_labels_by_video = unpack_task(task_dict, self.device)
-                 
+
+                t1 = time.time() 
                 self.model.personalise(context_clips, context_labels, ops_counter=self.ops_counter)
+                self.ops_counter.log_time(time.time() - t1)
 
                 # loop through each target video
                 for target_video, target_labels in zip(target_clips_by_video, target_labels_by_video):
                     target_video_clips, target_video_labels = attach_frame_history(target_video, target_labels, self.args.clip_length)
-                    target_video_logits = self.model.batch_predict(target_video_clips)
+                    target_video_logits = self.model.predict(target_video_clips)
                     self.test_evaluator.append(target_video_logits, target_video_labels)
 
                 # reset task's params
@@ -288,6 +290,7 @@ class Learner:
                     _, current_user_stats = self.test_evaluator.get_mean_stats(current_user=True)
                     print_and_log(self.logfile, 'test user {0:}/{1:} stats: {2:}'.format(self.test_evaluator.current_user+1, self.test_queue.num_users, stats_to_str(current_user_stats)))
                     self.test_evaluator.next_user()
+                    break
                     
             stats_per_user, stats_per_video = self.test_evaluator.get_mean_stats()
             stats_per_user_str, stats_per_video_str = stats_to_str(stats_per_user), stats_to_str(stats_per_video)

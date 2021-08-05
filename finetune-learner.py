@@ -148,7 +148,9 @@ class Learner:
                 total_steps = len(train_tasks)
                 for step, task_dict in enumerate(train_tasks):
 
+                    t1 = time.time()
                     task_loss = self.train_task(task_dict)
+                    task_time = time.time() - t1
                     losses.append(task_loss.detach())
 
                     if ((step + 1) % self.args.tasks_per_batch == 0) or (step == (total_steps - 1)):
@@ -157,7 +159,7 @@ class Learner:
 
                     if self.args.print_by_step:
                         current_stats_str = stats_to_str(self.train_evaluator.get_current_stats())
-                        print_and_log(self.logfile, 'epoch [{}/{}][{}/{}], train loss: {:.7f}, {:}'.format(epoch+1, self.args.epochs, step+1, total_steps, task_loss.item(), current_stats_str))
+                        print_and_log(self.logfile, 'epoch [{}/{}][{}/{}], train loss: {:.7f}, {:}, time/task: {:d}m{:02d}s'.format(epoch+1, self.args.epochs, step+1, total_steps, task_loss.item(), current_stats_str.strip(), int(task_time / 60), int(task_time % 60)))
 
                 mean_stats = self.train_evaluator.get_mean_stats()
                 seconds = time.time() - since
@@ -192,7 +194,7 @@ class Learner:
 
         context_clips, context_labels, target_clips, target_labels = unpack_task(task_dict, self.device)
        
-        joint_context_clips = torch.cat((context_clips, target_clips), dim=0)
+        joint_context_clips = np.concatenate((context_clips, target_clips), axis=0)
         joint_context_labels = torch.cat((context_labels, target_labels), dim=0)
         joint_context_logits = self.model.predict(joint_context_clips, context=True)
         self.train_evaluator.update_stats(joint_context_logits, joint_context_labels) 
@@ -219,7 +221,7 @@ class Learner:
             with torch.no_grad():
                 for target_video, target_labels in zip(target_clips_by_video, target_labels_by_video):
                     target_video_clips, target_video_labels = attach_frame_history(target_video, target_labels, self.args.clip_length)
-                    target_video_logits = finetuner.batch_predict(target_video_clips)
+                    target_video_logits = finetuner.predict(target_video_clips)
                     self.validation_evaluator.append(target_video_logits, target_video_labels)
             
                 if (step+1) % self.args.test_tasks_per_user == 0: # end of current user
@@ -253,8 +255,10 @@ class Learner:
             finetuner = self.init_finetuner()
 
             # finetune for task of current user using their context set
+            t1 = time.time()
             learning_args=(self.args.inner_learning_rate, self.loss, 'sgd', 1.0)
             finetuner.personalise(context_clips, context_labels, learning_args, ops_counter=self.ops_counter)
+            self.ops_counter.log_time(time.time() - t1)
             # add task's ops to self.ops_counter
             self.ops_counter.task_complete()
 
@@ -262,7 +266,7 @@ class Learner:
             with torch.no_grad():
                 for target_video, target_labels in zip(target_clips_by_video, target_labels_by_video):
                     target_video_clips, target_video_labels = attach_frame_history(target_video, target_labels, self.args.clip_length)
-                    target_video_logits = finetuner.batch_predict(target_video_clips)
+                    target_video_logits = finetuner.predict(target_video_clips)
                     self.test_evaluator.append(target_video_logits, target_video_labels)
             
                 if (step+1) % self.args.test_tasks_per_user == 0: # end of current user

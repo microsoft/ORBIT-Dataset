@@ -8,34 +8,15 @@ from PIL import Image
 import torchvision.transforms as transforms
 from torch.utils.data import Dataset, DataLoader
 
-class ListBatcher():
-    def __init__(self, batch_size):
-        self.batch_size = batch_size
-
-    def _get_number_of_batches(self, list_size):
-        self._set_list_size(list_size)
-        assert self.batch_size > 0, "self.batch_size is 0" 
-        assert self.list_size > 0, "self.list_size is 0"
-        return int(np.ceil(float(self.list_size) / float(self.batch_size)))
-
-    def _set_list_size(self, list_size):
-        self.list_size = list_size
-
-    def _get_batch_indices(self, index):
-        batch_start_index = index * self.batch_size
-        batch_end_index = batch_start_index + self.batch_size
-        if batch_end_index > self.list_size:
-            batch_end_index = self.list_size
-        return range(batch_start_index, batch_end_index)
-
-    def reset(self, batch_size):
-        self.batch_size = batch_size
-        self.list_size = 0
-
 class DatasetFromClipPaths(Dataset):
-    def __init__(self, clip_paths):
+    def __init__(self, clip_paths, with_labels):
         super().__init__()
-        self.clip_paths = clip_paths
+        self.with_labels = with_labels
+        if self.with_labels:
+            self.clip_paths, self.clip_labels = clip_paths
+        else:
+            self.clip_paths = clip_paths
+        
         imagenet_normalise = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         self.transform = transforms.Compose([
                                 transforms.ToTensor(),
@@ -48,7 +29,10 @@ class DatasetFromClipPaths(Dataset):
         for frame_path in self.clip_paths[index]:
             frame = self.loader(frame_path)
             clip.append(self.transform(frame))
-        return torch.stack(clip, dim=0)
+        if self.with_labels:
+            return torch.stack(clip, dim=0), self.clip_labels[index]
+        else:
+            return torch.stack(clip, dim=0)
 
     def load_frame(self, frame_path):
         with open(frame_path, 'rb') as f:
@@ -58,13 +42,14 @@ class DatasetFromClipPaths(Dataset):
     def __len__(self):
         return len(self.clip_paths)
 
-def get_clip_loader(clip_paths, batch_size):
-    clips_dataset = DatasetFromClipPaths(clip_paths)
+def get_clip_loader(clip_paths, batch_size, with_labels=False):
+    clips_dataset = DatasetFromClipPaths(clip_paths, with_labels=with_labels)
 
     return DataLoader(clips_dataset,
                       batch_size=batch_size,
-                      num_workers=4,
-                      pin_memory=True)
+                      num_workers=8,
+                      pin_memory=True,
+                      persistent_workers=True)
 
 def attach_frame_history(frame_paths, labels, clip_length):
     """
@@ -96,7 +81,4 @@ def unpack_task(task_dict, device):
     target_clips = task_dict['target_clips']
     target_labels = task_dict['target_labels']
 
-    # only send context and target labels to device; all others will be sent only when processed
-    context_labels = context_labels.to(device)
-    target_labels = target_labels.to(device) if isinstance(target_labels, torch.Tensor) else target_labels
     return context_clips, context_labels, target_clips, target_labels
