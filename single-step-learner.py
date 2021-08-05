@@ -183,7 +183,7 @@ class Learner:
         self.logfile.close()
 
     def train_task(self, task_dict):
-        context_clips, context_labels, target_clips, target_labels = unpack_task(task_dict, self.device)
+        context_clips, context_labels, target_clips, target_labels = unpack_task(task_dict, self.device, target_to_device=True)
 
         self.model.personalise(context_clips, context_labels)
         target_logits = self.model.predict(target_clips)
@@ -290,7 +290,6 @@ class Learner:
                     _, current_user_stats = self.test_evaluator.get_mean_stats(current_user=True)
                     print_and_log(self.logfile, 'test user {0:}/{1:} stats: {2:}'.format(self.test_evaluator.current_user+1, self.test_queue.num_users, stats_to_str(current_user_stats)))
                     self.test_evaluator.next_user()
-                    break
                     
             stats_per_user, stats_per_video = self.test_evaluator.get_mean_stats()
             stats_per_user_str, stats_per_video_str = stats_to_str(stats_per_user), stats_to_str(stats_per_video)

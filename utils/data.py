@@ -75,10 +75,15 @@ def attach_frame_history(frame_paths, labels, clip_length):
     # since frame_paths_with_history have wrapped around, remove last (clip_length - 1) frames
     return frame_paths_with_history[:-(clip_length-1)], labels 
 
-def unpack_task(task_dict, device):
+def unpack_task(task_dict, device, context_to_device=True, target_to_device=False):
     context_clips = task_dict['context_clips']
     context_labels = task_dict['context_labels']
     target_clips = task_dict['target_clips']
     target_labels = task_dict['target_labels']
 
+    if context_to_device:
+        context_labels = context_labels.to(device)
+    if target_to_device:
+        target_labels = target_labels.to(device)
+    
     return context_clips, context_labels, target_clips, target_labels
