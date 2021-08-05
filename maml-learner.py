@@ -204,7 +204,7 @@ class Learner:
 
     def train_task(self, task_dict):
 
-        context_clips, context_labels, target_clips, target_labels = unpack_task(task_dict, self.device)
+        context_clips, context_labels, target_clips, target_labels = unpack_task(task_dict, self.device, target_to_device=True)
         
         inner_loop_model = self.init_inner_loop_model()
         inner_loop_model.set_test_mode(True)
@@ -230,7 +230,7 @@ class Learner:
 
     def train_task_with_lite(self, task_dict):
 
-        context_clips, context_labels, target_clips, target_labels = unpack_task(task_dict, self.device)
+        context_clips, context_labels, target_clips, target_labels = unpack_task(task_dict, self.device, context_to_device=False)
         
         inner_loop_model = self.init_inner_loop_model()
         inner_loop_model.set_test_mode(True)
@@ -265,7 +265,7 @@ class Learner:
     def validate(self):
 
         for step, task_dict in enumerate(self.validation_queue.get_tasks()):
-            context_clips, context_labels, target_clips_by_video, target_labels_by_video = unpack_task(task_dict, self.device)
+            context_clips, context_labels, target_clips_by_video, target_labels_by_video = unpack_task(task_dict, self.device, context_to_device=False)
 
             # initialise inner loop model to current state of self.model for each task
             inner_loop_model = self.init_inner_loop_model()
@@ -305,7 +305,7 @@ class Learner:
         self.ops_counter.set_base_params(self.model)
         
         for step, task_dict in enumerate(self.test_queue.get_tasks()):
-            context_clips, context_labels, target_clips_by_video, target_labels_by_video = unpack_task(task_dict, self.device)
+            context_clips, context_labels, target_clips_by_video, target_labels_by_video = unpack_task(task_dict, self.device, context_to_device=False)
 
             # initialise inner loop model to current state of self.model for each task
             inner_loop_model = self.init_inner_loop_model()

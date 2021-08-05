@@ -192,7 +192,7 @@ class Learner:
 
     def train_task(self, task_dict):
 
-        context_clips, context_labels, target_clips, target_labels = unpack_task(task_dict, self.device)
+        context_clips, context_labels, target_clips, target_labels = unpack_task(task_dict, self.device, target_to_device=True)
        
         joint_context_clips = np.concatenate((context_clips, target_clips), axis=0)
         joint_context_labels = torch.cat((context_labels, target_labels), dim=0)
@@ -208,7 +208,7 @@ class Learner:
     def validate(self):
  
         for step, task_dict in enumerate(self.validation_queue.get_tasks()):
-            context_clips, context_labels, target_clips_by_video, target_labels_by_video = unpack_task(task_dict, self.device)
+            context_clips, context_labels, target_clips_by_video, target_labels_by_video = unpack_task(task_dict, self.device, context_to_device=False)
 
             # initialise finetuner model to initial state of self.model for each task
             finetuner = self.init_finetuner()
@@ -249,7 +249,7 @@ class Learner:
         self.ops_counter.set_base_params(self.model)
          
         for step, task_dict in enumerate(self.test_queue.get_tasks()):
-            context_clips, context_labels, target_clips_by_video, target_labels_by_video = unpack_task(task_dict, self.device)
+            context_clips, context_labels, target_clips_by_video, target_labels_by_video = unpack_task(task_dict, self.device, context_to_device=False)
 
             # initialise finetuner model to initial state of self.model for each task
             finetuner = self.init_finetuner()
