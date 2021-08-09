@@ -201,6 +201,9 @@ class FewShotRecogniser(nn.Module):
         :param reduction: (str) Method to aggregate clip encodings from self.set_encoder.
         :return: (torch.Tensor or None) Task embedding.
         """ 
+        if not self.args.adapt_features:
+            return None
+
         reps = []
         for batch_clips in context_clip_loader: 
             batch_clips = batch_clips.to(self.device, non_blocking=True)
@@ -319,7 +322,7 @@ class MultiStepFewShotRecogniser(FewShotRecogniser):
         :return: (torch.Tensor) Logits over object classes for each clip in clips.
         """
         clip_loader = get_clip_loader(clip_paths, self.args.batch_size)
-        task_embedding = None # multi-step methods do not use set encoder
+        task_embedding = self._get_task_embedding_in_batches(clip_loader, ops_counter) # returns None, multi-step methods do not use set encoder
         self.feature_adapter_params = self._get_feature_adapter_params(task_embedding, ops_counter)
         features = self._get_features_in_batches(clip_loader, self.feature_adapter_params, ops_counter, context=context)
         features = self._pool_features(features, ops_counter)
@@ -333,7 +336,7 @@ class MultiStepFewShotRecogniser(FewShotRecogniser):
         :param context: (bool) True if a context set is being processed, otherwise False.
         :return: (torch.Tensor) Logits over object classes for each clip in clips.
         """
-        task_embedding = None # multi-step methods do no use set encoder
+        task_embedding = self._get_task_embedding(clips, ops_counter) # returns None, multi-step methods do not use set encoder
         self.feature_adapter_params = self._get_feature_adapter_params(task_embedding, ops_counter)
         features = self._get_features(clips, self.feature_adapter_params, ops_counter, context=context)
         features = self._pool_features(features, ops_counter)

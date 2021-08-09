@@ -103,6 +103,8 @@ class Learner:
             'train_num_clips': [self.args.train_context_num_clips, self.args.train_target_num_clips],
             'test_num_clips': [self.args.test_context_num_clips, self.args.test_target_num_clips],
             'subsample_factor': self.args.subsample_factor,
+            'frame_size': self.args.frame_size,
+            'preload_clips': self.args.preload_clips,
         }
 
         dataloader = DataLoader(dataset_info)
@@ -204,7 +206,7 @@ class Learner:
 
     def train_task(self, task_dict):
 
-        context_clips, context_labels, target_clips, target_labels = unpack_task(task_dict, self.device, target_to_device=True)
+        context_clips, context_labels, target_clips, target_labels = unpack_task(task_dict, self.device, target_to_device=True, preload_clips=self.args.preload_clips)
         
         inner_loop_model = self.init_inner_loop_model()
         inner_loop_model.set_test_mode(True)
@@ -230,7 +232,7 @@ class Learner:
 
     def train_task_with_lite(self, task_dict):
 
-        context_clips, context_labels, target_clips, target_labels = unpack_task(task_dict, self.device, context_to_device=False)
+        context_clips, context_labels, target_clips, target_labels = unpack_task(task_dict, self.device, context_to_device=False, preload_clips=self.args.preload_clips)
         
         inner_loop_model = self.init_inner_loop_model()
         inner_loop_model.set_test_mode(True)
@@ -265,7 +267,10 @@ class Learner:
     def validate(self):
 
         for step, task_dict in enumerate(self.validation_queue.get_tasks()):
-            context_clips, context_labels, target_clips_by_video, target_labels_by_video = unpack_task(task_dict, self.device, context_to_device=False)
+            context_clips, context_labels, target_clips_by_video, target_labels_by_video = unpack_task(task_dict, self.device, context_to_device=False, preload_clips=self.args.preload_clips)
+            # user's target videos are only returned for their first task (to avoid multiple copies), so cache it
+            if step % self.args.test_tasks_per_user == 0:
+                cached_target_clips_by_video, cached_target_labels_by_video = target_clips_by_video, target_labels_by_video
 
             # initialise inner loop model to current state of self.model for each task
             inner_loop_model = self.init_inner_loop_model()
@@ -276,7 +281,7 @@ class Learner:
             inner_loop_model.personalise(context_clips, context_labels, learning_args)
 
             with torch.no_grad():
-                for target_video, target_labels in zip(target_clips_by_video, target_labels_by_video):  # loop through videos
+                for target_video, target_labels in zip(cached_target_clips_by_video, cached_target_labels_by_video):  # loop through videos
                     target_video_clips, target_video_labels = attach_frame_history(target_video, target_labels, self.args.clip_length)
                     target_video_logits = inner_loop_model.predict(target_video_clips)
                     self.validation_evaluator.append(target_video_logits, target_video_labels)
@@ -305,7 +310,10 @@ class Learner:
         self.ops_counter.set_base_params(self.model)
         
         for step, task_dict in enumerate(self.test_queue.get_tasks()):
-            context_clips, context_labels, target_clips_by_video, target_labels_by_video = unpack_task(task_dict, self.device, context_to_device=False)
+            context_clips, context_labels, target_clips_by_video, target_labels_by_video = unpack_task(task_dict, self.device, context_to_device=False, preload_clips=self.args.preload_clips)
+            # user's target videos are only returned for their first task (to avoid multiple copies), so cache it
+            if step % self.args.test_tasks_per_user == 0:
+                cached_target_clips_by_video, cached_target_labels_by_video = target_clips_by_video, target_labels_by_video
 
             # initialise inner loop model to current state of self.model for each task
             inner_loop_model = self.init_inner_loop_model()
@@ -320,11 +328,12 @@ class Learner:
             self.ops_counter.task_complete()
 
             with torch.no_grad():
-                for target_video, target_labels in zip(target_clips_by_video, target_labels_by_video):  # loop through videos
+                for target_video, target_labels in zip(cached_target_clips_by_video, cached_target_labels_by_video):  # loop through videos
                     target_video_clips, target_video_labels = attach_frame_history(target_video, target_labels, self.args.clip_length)
                     target_video_logits = inner_loop_model.predict(target_video_clips)
                     self.test_evaluator.append(target_video_logits, target_video_labels)
-            
+           
+                # if user's last task
                 if (step+1) % self.args.test_tasks_per_user == 0:
                     _, current_user_stats = self.test_evaluator.get_mean_stats(current_user=True)
                     print_and_log(self.logfile, 'test user {0:}/{1:} stats: {2:}'.format(self.test_evaluator.current_user+1, self.test_queue.num_users, stats_to_str(current_user_stats)))

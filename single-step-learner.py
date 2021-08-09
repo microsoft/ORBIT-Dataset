@@ -104,6 +104,8 @@ class Learner:
             'train_num_clips': [self.args.train_context_num_clips, self.args.train_target_num_clips],
             'test_num_clips': [self.args.test_context_num_clips, self.args.test_target_num_clips],
             'subsample_factor': self.args.subsample_factor,
+            'frame_size': self.args.frame_size,
+            'preload_clips': self.args.preload_clips,
         }
         
         dataloader = DataLoader(dataset_info)
@@ -183,7 +185,7 @@ class Learner:
         self.logfile.close()
 
     def train_task(self, task_dict):
-        context_clips, context_labels, target_clips, target_labels = unpack_task(task_dict, self.device, target_to_device=True)
+        context_clips, context_labels, target_clips, target_labels = unpack_task(task_dict, self.device, target_to_device=True, preload_clips=self.args.preload_clips)
 
         self.model.personalise(context_clips, context_labels)
         target_logits = self.model.predict(target_clips)
@@ -199,7 +201,7 @@ class Learner:
         return task_loss
 
     def train_task_with_lite(self, task_dict):
-        context_clips, context_labels, target_clips, target_labels = unpack_task(task_dict, self.device)
+        context_clips, context_labels, target_clips, target_labels = unpack_task(task_dict, self.device, preload_clips=self.args.preload_clips)
 
         # compute and save personalise outputs of whole context set with back-propagation disabled
         self.model._cache_context_outputs(context_clips)
@@ -230,12 +232,15 @@ class Learner:
         
         with torch.no_grad():
             for step, task_dict in enumerate(self.validation_queue.get_tasks()):
-                context_clips, context_labels, target_clips_by_video, target_labels_by_video = unpack_task(task_dict, self.device)
+                context_clips, context_labels, target_clips_by_video, target_labels_by_video = unpack_task(task_dict, self.device, preload_clips=self.args.preload_clips)
+                # user's target videos are only returned for their first task (to avoid multiple copies), so cache it
+                if step % self.args.test_tasks_per_user == 0:
+                    cached_target_clips_by_video, cached_target_labels_by_video = target_clips_by_video, target_labels_by_video
                 
                 self.model.personalise(context_clips, context_labels)
 
                 # loop through each target video
-                for target_video, target_labels in zip(target_clips_by_video, target_labels_by_video):
+                for target_video, target_labels in zip(cached_target_clips_by_video, cached_target_labels_by_video):
                     target_video_clips, target_video_labels = attach_frame_history(target_video, target_labels, self.args.clip_length)
                     target_video_logits = self.model.predict(target_video_clips)
                     self.validation_evaluator.append(target_video_logits, target_video_labels)
@@ -269,14 +274,18 @@ class Learner:
 
         with torch.no_grad():
             for step, task_dict in enumerate(self.test_queue.get_tasks()):
-                context_clips, context_labels, target_clips_by_video, target_labels_by_video = unpack_task(task_dict, self.device)
+                context_clips, context_labels, target_clips_by_video, target_labels_by_video = unpack_task(task_dict, self.device, preload_clips=self.args.preload_clips)
+                # user's target videos are only returned for their first task (to avoid multiple copies), so cache it
+                if step % self.args.test_tasks_per_user == 0:
+                    cached_target_clips_by_video, cached_target_labels_by_video = target_clips_by_video, target_labels_by_video
 
                 t1 = time.time() 
                 self.model.personalise(context_clips, context_labels, ops_counter=self.ops_counter)
                 self.ops_counter.log_time(time.time() - t1)
 
+
                 # loop through each target video
-                for target_video, target_labels in zip(target_clips_by_video, target_labels_by_video):
+                for target_video, target_labels in zip(cached_target_clips_by_video, cached_target_labels_by_video):
                     target_video_clips, target_video_labels = attach_frame_history(target_video, target_labels, self.args.clip_length)
                     target_video_logits = self.model.predict(target_video_clips)
                     self.test_evaluator.append(target_video_logits, target_video_labels)

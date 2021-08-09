@@ -60,7 +60,7 @@ The following scripts train and test 4 few-shot learning models on the ORBIT ben
 - For Clean Video Evaluation (CLE-VE) use `--context_video_type clean --target_video_type clean` 
 - For Clutter Video Evaluation (CLU-VE) use `--context_video_type clean --target_video_type clutter`
 
-All models are trained/tested with the arguments below and the defaults specified in `utils/args.py`. These and all other implementation details are described in Section 5 and Appendix F of the [dataset paper](https://arxiv.org/abs/2104.03841). The memory required to train can be reduced by lowering the `clip_length`, `train_context_num_clips`, `train_target_num_clips`, or `test_context_num_clips` arguments. For CNAPs/ProtoNets trained with LITE, memory can also be saved by lowering `num_lite_samples` and `batch_size` (though small `num_lite_samples` makes training less stable). For MAML and FineTuner, a smaller `batch_size` can be used since standard batch-processing is employed. 
+All models are trained/tested with the arguments below and the defaults specified in `utils/args.py`. These and all other implementation details are described in Section 5 and Appendix F of the [dataset paper](https://arxiv.org/abs/2104.03841). 
 
 Note, before training/testing remember to activate the conda environment (`conda activate orbit-dataset`) or virtual environment. Also, if you are using Windows (or WSL) you will need to set `WORKERS=0` in `data/queues.py` as multi-threaded data loading is not supported. You will also need to [enable longer file paths](https://docs.microsoft.com/en-us/windows/win32/fileio/maximum-file-path-limitation#enable-long-paths-in-windows-10-version-1607-and-later) as some file names in the dataset are longer than the system limit.
 
@@ -174,6 +174,20 @@ python3 finetune-learner.py --data_path folder/to/save/dataset/orbit_benchmark_2
                             --batch_size 16
 ```
 Note, like MAML, it is possible to test on a GPU with less memory by reducing `--batch_size`. 
+
+# GPU and CPU memory requirements
+
+In general, the models take 16-24GB of GPU memory for training and testing. In addition, the models take 16-24GB of CPU memory for training, but can take up to 50-60GB for testing (since all frames from a user's videos are loaded).
+
+The GPU memory requirements can be reduced by:
+* Training with LITE (only relevant for CNAPs and ProtoNets and typically only needed for 224x224 or larger images). This can be activated with the `--with_lite` flag. Memory can be further saved by lowering `--num_lite_samples`. 
+* Using a smaller `batch_size`. This is relevant for CNAPs and ProtoNets (trained with/without LITE) and also MAML and FineTuner. 
+* Lowering the `--clip_length`, `--train_context_num_clips`, `--train_target_num_clips`, or `--test_context_num_clips` arguments.
+
+
+The CPU memory requirements can be reduced by:
+* Reducing the number of data loader workers (see `num_workers` in `data/queues.py`).
+* Using the `--no_preload_clips` flag. This will delay the reading of frames from disk into CPU (and then GPU) memory until the very last moment (i.e. when a batch is processed). This can signficiantly reduce the CPU memory required, but comes at the cost of slower training/testing.
 
 # Pre-trained checkpoints
 

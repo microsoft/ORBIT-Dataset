@@ -102,6 +102,8 @@ class Learner:
             'train_num_clips': [self.args.train_context_num_clips, self.args.train_target_num_clips],
             'test_num_clips': [self.args.test_context_num_clips, self.args.test_target_num_clips],
             'subsample_factor': self.args.subsample_factor,
+            'frame_size': self.args.frame_size,
+            'preload_clips': self.args.preload_clips,
         }
 
         dataloader = DataLoader(dataset_info)
@@ -192,9 +194,9 @@ class Learner:
 
     def train_task(self, task_dict):
 
-        context_clips, context_labels, target_clips, target_labels = unpack_task(task_dict, self.device, target_to_device=True)
-       
-        joint_context_clips = np.concatenate((context_clips, target_clips), axis=0)
+        context_clips, context_labels, target_clips, target_labels = unpack_task(task_dict, self.device, target_to_device=True, preload_clips=self.args.preload_clips)
+      
+        joint_context_clips = torch.cat((context_clips, target_clips)) if self.args.preload_clips else np.concatenate((context_clips, target_clips))
         joint_context_labels = torch.cat((context_labels, target_labels), dim=0)
         joint_context_logits = self.model.predict(joint_context_clips, context=True)
         self.train_evaluator.update_stats(joint_context_logits, joint_context_labels) 
@@ -208,7 +210,10 @@ class Learner:
     def validate(self):
  
         for step, task_dict in enumerate(self.validation_queue.get_tasks()):
-            context_clips, context_labels, target_clips_by_video, target_labels_by_video = unpack_task(task_dict, self.device, context_to_device=False)
+            context_clips, context_labels, target_clips_by_video, target_labels_by_video = unpack_task(task_dict, self.device, context_to_device=False, preload_clips=self.args.preload_clips)
+            # user's target videos are only returned for their first task (to avoid multiple copies), so cache it
+            if step % self.args.test_tasks_per_user == 0:
+                cached_target_clips_by_video, cached_target_labels_by_video = target_clips_by_video, target_labels_by_video
 
             # initialise finetuner model to initial state of self.model for each task
             finetuner = self.init_finetuner()
@@ -219,7 +224,7 @@ class Learner:
 
             # loop through videos
             with torch.no_grad():
-                for target_video, target_labels in zip(target_clips_by_video, target_labels_by_video):
+                for target_video, target_labels in zip(cached_target_clips_by_video, cached_target_labels_by_video):
                     target_video_clips, target_video_labels = attach_frame_history(target_video, target_labels, self.args.clip_length)
                     target_video_logits = finetuner.predict(target_video_clips)
                     self.validation_evaluator.append(target_video_logits, target_video_labels)
@@ -249,7 +254,10 @@ class Learner:
         self.ops_counter.set_base_params(self.model)
          
         for step, task_dict in enumerate(self.test_queue.get_tasks()):
-            context_clips, context_labels, target_clips_by_video, target_labels_by_video = unpack_task(task_dict, self.device, context_to_device=False)
+            context_clips, context_labels, target_clips_by_video, target_labels_by_video = unpack_task(task_dict, self.device, context_to_device=False, preload_clips=self.args.preload_clips)
+            # user's target videos are only returned for their first task (to avoid multiple copies), so cache it
+            if step % self.args.test_tasks_per_user == 0:
+                cached_target_clips_by_video, cached_target_labels_by_video = target_clips_by_video, target_labels_by_video
 
             # initialise finetuner model to initial state of self.model for each task
             finetuner = self.init_finetuner()
@@ -264,7 +272,7 @@ class Learner:
 
             # loop through videos
             with torch.no_grad():
-                for target_video, target_labels in zip(target_clips_by_video, target_labels_by_video):
+                for target_video, target_labels in zip(cached_target_clips_by_video, cached_target_labels_by_video):
                     target_video_clips, target_video_labels = attach_frame_history(target_video, target_labels, self.args.clip_length)
                     target_video_logits = finetuner.predict(target_video_clips)
                     self.test_evaluator.append(target_video_logits, target_video_labels)
