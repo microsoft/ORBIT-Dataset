@@ -43,7 +43,7 @@ def get_clip_loader(clips, batch_size, with_labels=False):
 
     elif isinstance(clips[0], torch.Tensor):
         if with_labels:
-            return zip(clips[0].split(batch_size), clips[1].split(batch_size))
+            return list(zip(clips[0].split(batch_size), clips[1].split(batch_size)))
         else: 
             return clips.split(batch_size)
 
