@@ -117,18 +117,23 @@ def parse_args(learner='default'):
     return args
 
 def verify_args(learner, args):
+    # define some print out colours
+    cred = "\33[31m"
+    cyellow = "\33[33m"
+    cend = "\33[0m"
+
     if 'train' in args.mode and not args.learn_extractor and not args.adapt_features:
-        sys.exit('error: at least one of "--learn_extractor" and "--adapt_features" must be used during training.')
+        sys.exit('{:}error: at least one of "--learn_extractor" and "--adapt_features" must be used during training{:}'.format(cred, cend))
 
     if args.frame_size == 84:
         if 'resnet18' in args.feature_extractor:
             args.feature_extractor = "{:}_84".format(args.feature_extractor)
         else:
-            sys.exit('error: --frame_size 84 not implemented for {:}'.format(args.feature_extractor))
+            sys.exit('{:}error: --frame_size 84 not implemented for {:}{:}'.format(cred, args.feature_extractor, cend))
 
     if learner == 'gradient-learner':
         if args.with_lite:
-            print('warning: --with_lite is not relevant for MAML and FineTuner. Normal batching is used instead')
+            print('{:}warning: --with_lite is not relevant for MAML and FineTuner. Normal batching is used instead{:}'.format(cyellow, cend))
         
         if args.adapt_features and args.feature_adaptation_method == 'generate':
-            sys.exit('error: MAML/FineTuner are not generation-based methods; use --feature_adaptation_method learn')
+            sys.exit('{:}error: MAML/FineTuner are not generation-based methods; use --feature_adaptation_method learn{:}'.format(cred, cend))
