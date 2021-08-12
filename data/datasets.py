@@ -190,6 +190,10 @@ class ORBITDataset(Dataset):
 
         # subsample frames by subsample_factor
         subsampled_frame_paths = frame_paths[0:self.frame_cap:self.subsample_factor]
+
+	# if not divisible by self.clip_length, pad with last frame until it is
+        spare_frames = len(subsampled_frame_paths) % self.clip_length
+        subsampled_frame_paths.extend([subsampled_frame_paths[-1] for f in range(self.clip_length - spare_frames)])
         num_subsampled_frames = len(subsampled_frame_paths)
 
         if num_clips == 'max': # select all clips from video
