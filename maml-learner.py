@@ -79,7 +79,7 @@ class Learner:
         self.init_evaluators()
         self.model = self.init_model()
         self.loss = cross_entropy
-        self.train_task_fn = self.train_task_with_lite if self.args.with_lite else self.train_task
+        self.train_task_fn = self.train_task_in_batches if self.args.with_lite else self.train_task
 
     def init_dataset(self):
 
@@ -115,7 +115,6 @@ class Learner:
     def init_model(self):
         model = MultiStepFewShotRecogniser(self.args)
         model._register_extra_parameters()
-        self.zero_grads(model)
         model._set_device(self.device)
         model._send_to_device()
 
@@ -148,7 +147,8 @@ class Learner:
 
     def run(self):
         if self.args.mode == 'train' or self.args.mode == 'train_test':
-        
+       
+            self.zero_grads(self.model)
             extractor_scale_factor=0.1 if self.args.pretrained_extractor_path else 1.0
             self.optimizer = init_optimizer(self.model, self.args.learning_rate, extractor_scale_factor=extractor_scale_factor)
 
@@ -230,7 +230,7 @@ class Learner:
 
         return target_loss
 
-    def train_task_with_lite(self, task_dict):
+    def train_task_in_batches(self, task_dict):
 
         context_clips, context_labels, target_clips, target_labels = unpack_task(task_dict, self.device, context_to_device=False, preload_clips=self.args.preload_clips)
         
@@ -327,8 +327,9 @@ class Learner:
             # add task's ops to self.ops_counter
             self.ops_counter.task_complete()
 
+            # loop through user's target videos 
             with torch.no_grad():
-                for target_video, target_labels in zip(cached_target_clips_by_video, cached_target_labels_by_video):  # loop through videos
+                for target_video, target_labels in zip(cached_target_clips_by_video, cached_target_labels_by_video):
                     target_video_clips, target_video_labels = attach_frame_history(target_video, target_labels, self.args.clip_length)
                     target_video_logits = inner_loop_model.predict(target_video_clips)
                     self.test_evaluator.append(target_video_logits, target_video_labels)
