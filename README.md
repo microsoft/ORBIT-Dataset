@@ -231,10 +231,10 @@ To summarize and plot the unfiltered dataset, use `scripts/summarize_dataset.py`
 ```
 ### For ORBIT dataset and baselines:
 ```
-@article{massiceti2021orbit,
+@inproceedings{massiceti2021orbit,
   title={{ORBIT: A Real-World Few-Shot Dataset for Teachable Object Recognition}},
   author={Massiceti, Daniela and Zintgraf, Luisa and Bronskill, John and Theodorou, Lida and Harris, Matthew Tobias and Cutrell, Edward and Morrison, Cecily and Hofmann, Katja and Stumpf, Simone},
-  journal={arXiv preprint arXiv:2104.03841},
+  booktitle={Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV)},
   year={2021}}
 ```
 
