@@ -383,7 +383,7 @@ class SingleStepFewShotRecogniser(FewShotRecogniser):
         :param ops_counter: (utils.OpsCounter or None) Object that counts operations performed.
         :return: Nothing.
         """ 
-        context_clip_loader = get_clip_loader(context_clipss, self.args.batch_size)
+        context_clip_loader = get_clip_loader(context_clips, self.args.batch_size)
         task_embedding = self._get_task_embedding_in_batches(context_clip_loader, ops_counter)
         self.feature_adapter_params = self._get_feature_adapter_params(task_embedding, ops_counter)
         context_features = self._get_features_in_batches(context_clip_loader, self.feature_adapter_params, ops_counter, context=True)
