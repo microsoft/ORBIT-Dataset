@@ -151,7 +151,7 @@ class ORBITDataset(Dataset):
         Function to sample clips from a list of videos.
         :param video_paths: (list::str) List of video paths.
         :param num_clips: (int or str) Number of clips of contiguous frames to sample per video. If 'max', sample all non-overlapping clips.
-        :return: (list::np.ndarray, list::int) Frame paths organised in clips of self.clip_length contiguous frames, and video ID for each sampled clip.
+        :return: (list::torch.Tensor, list::np.ndarray, list::int) Frame data and paths organised in clips of self.clip_length contiguous frames, and video ID for each sampled clip.
         """
         clip_data, clip_paths, video_ids = [], [], []
         for video_path in video_paths:
@@ -406,7 +406,7 @@ class ObjectEpisodicORBITDataset(ORBITDataset):
         :param with_caps: (bool) If True, impose caps on the number of videos per object, otherwise leave uncapped.
         :return: Nothing.
         """
-        ORBITDataset.__init__(self, root, object_cap, way_method, clip_length, subsample_factor, test_mode, with_cluster_labels, with_caps)
+        ORBITDataset.__init__(self, root, way_method, object_cap, subsample_factor, clip_length, preload_clips, frame_size, test_mode, with_cluster_labels, with_caps)
         
         self.shot_context, self.shot_target = shots
         self.shot_method_context, self.shot_method_target = shot_methods
