@@ -27,7 +27,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE. 
 """
-
+import time
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -70,11 +70,15 @@ class LinearClassifier(nn.Module):
         Function that passes a batch of target features through linear classification layer to get logits over object classes for each feature.
         :param features: (torch.Tensor) Batch of features.
         :return: (torch.Tensor) Logits over object classes for each feature.
-        """ 
+        """
+        t1 = time.time()
+        out = self.linear(features)
         if ops_counter:
+            torch.cuda.synchronize()
+            ops_counter.log_time(time.time() - t1)
             ops_counter.compute_macs(self.linear, features)
         
-        return self.linear(features)
+        return out
 
     def reset(self):
         self.linear = None
@@ -93,11 +97,14 @@ class HeadClassifier(nn.Module):
     def _build_class_reps(self, context_features, context_labels, ops_counter):
         class_reps = OrderedDict()
         for c in torch.unique(context_labels):
+            t1 = time.time()
             # filter out feature vectors which have class c
             class_features = torch.index_select(context_features, 0, self._extract_class_indices(context_labels, c))
             class_rep = self._mean_pooling(class_features)
             class_reps[c.item()] = class_rep
             if ops_counter:
+                torch.cuda.synchronize()
+                ops_counter.log_time(time.time() - t1)
                 ops_counter.add_macs(context_features.size(0)) # selecting class features
                 ops_counter.add_macs(class_features.size(0) * class_features.size(1)) # mean pooling
 
@@ -162,12 +169,16 @@ class VersaClassifier(HeadClassifier):
         num_classes = len(label_set)
 
         for class_num in label_set:
+            t1 = time.time()
             nu = class_rep_dict[class_num]
             class_weight.append(self.weight_processor(nu))
             class_bias.append(self.bias_processor(nu))
             if ops_counter:
+                torch.cuda.synchronize()
+                ops_counter.log_time(time.time() - t1)
                 ops_counter.compute_macs(self.weight_processor, nu)
                 ops_counter.compute_macs(self.bias_processor, nu)
+
 
         self.param_dict['weight'] = torch.cat(class_weight, dim=0)
         self.param_dict['bias'] = torch.reshape(torch.cat(class_bias, dim=1), [num_classes, ])
@@ -211,11 +222,14 @@ class PrototypicalClassifier(HeadClassifier):
         num_classes = len(label_set)
 
         for class_num in label_set:
+            t1 = time.time()
             # equation 8 from the prototypical networks paper
             nu = class_rep_dict[class_num]
             class_weight.append(2 * nu)
             class_bias.append((-torch.matmul(nu, nu.t()))[None, None])
             if ops_counter:
+                torch.cuda.synchronize()
+                ops_counter.log_time(time.time() - t1)
                 ops_counter.add_macs(nu.size(0) * nu.size(1)) # 2* in class weight
                 ops_counter.add_macs(nu.size(0)**2 * nu.size(1)) # matmul in  class bias
                 ops_counter.add_macs(nu.size(0) * nu.size(1)) # -1* in  class bias
@@ -248,7 +262,9 @@ class MahalanobisClassifier(HeadClassifier):
         means = []
         precisions = []
         task_covariance_estimate = self._estimate_cov(context_features, ops_counter)
+        
         for c in torch.unique(context_labels):
+            t1 = time.time()
             # filter out feature vectors which have class c
             class_features = torch.index_select(context_features, 0, self._extract_class_indices(context_labels, c))
             # mean pooling examples to form class means
@@ -261,6 +277,8 @@ class MahalanobisClassifier(HeadClassifier):
             precisions.append(torch.inverse(covariance_matrix))
 
             if ops_counter:
+                torch.cuda.synchronize()
+                ops_counter.log_time(time.time() - t1)
                 ops_counter.add_macs(context_features.size(0)) # selecting class features
                 ops_counter.add_macs(class_features.size(0) * class_features.size(1)) # mean pooling
                 ops_counter.add_macs(1) # computing lambda_k_tau
@@ -314,6 +332,7 @@ class MahalanobisClassifier(HeadClassifier):
         Returns:
             The covariance matrix of the variables.
         """
+        t1 = time.time()
         if examples.dim() > 2:
             raise ValueError('m has more than 2 dimensions')
         if examples.dim() < 2:
@@ -329,6 +348,8 @@ class MahalanobisClassifier(HeadClassifier):
         cov_matrix = factor * examples.matmul(examples_t)
 
         if ops_counter:
+            torch.cuda.synchronize()
+            ops_counter.log_time(time.time() - t1)
             ops_counter.add_macs(examples.size(0) * examples.size(1)) # computing mean
             ops_counter.add_macs(1) # computing factor
             ops_counter.add_macs(examples.size(0)**2 * examples.size(1)) # computing matmul

@@ -320,10 +320,8 @@ class Learner:
             inner_loop_model.set_test_mode(True)
 
             # inner grad update - take a few grad steps using context set
-            t1 = time.time()
             learning_args=(self.args.inner_learning_rate, self.loss, 'sgd', 0.1)
             inner_loop_model.personalise(context_clips, context_labels, learning_args, ops_counter=self.ops_counter)
-            self.ops_counter.log_time(time.time() - t1)
             # add task's ops to self.ops_counter
             self.ops_counter.task_complete()
 

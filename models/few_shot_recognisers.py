@@ -28,7 +28,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE. 
 """
-
+import time
 import torch
 import numpy as np
 import torch.nn as nn
@@ -129,6 +129,7 @@ class FewShotRecogniser(nn.Module):
         :return: (torch.Tensor) Adapted frame features flattened across all clips.
         """ 
         self._set_model_state(context)
+        t1 = time.time()
         if self.args.use_two_gpus:
             clips = clips.cuda(1)
             features = self.feature_extractor(clips, feature_adapter_params).cuda(0)
@@ -136,6 +137,8 @@ class FewShotRecogniser(nn.Module):
             features = self.feature_extractor(clips, feature_adapter_params)
 
         if ops_counter:
+            torch.cuda.synchronize()
+            ops_counter.log_time(time.time() - t1)
             ops_counter.compute_macs(self.feature_extractor, clips, feature_adapter_params)
             
         return features
@@ -153,6 +156,7 @@ class FewShotRecogniser(nn.Module):
         self._set_model_state(context)
         for batch_clips in clip_loader:
             batch_clips = batch_clips.to(self.device, non_blocking=True)
+            t1 = time.time()
             if self.args.use_two_gpus:
                 batch_clips = batch_clips.cuda(1)
                 batch_features = self.feature_extractor(batch_clips, feature_adapter_params).cuda(0)
@@ -160,6 +164,8 @@ class FewShotRecogniser(nn.Module):
                 batch_features = self.feature_extractor(batch_clips, feature_adapter_params)
 
             if ops_counter:
+                torch.cuda.synchronize()
+                ops_counter.log_time(time.time() - t1)
                 ops_counter.compute_macs(self.feature_extractor, batch_clips, feature_adapter_params)
             
             features.append(batch_features)
@@ -172,11 +178,16 @@ class FewShotRecogniser(nn.Module):
         :param task_embedding: (torch.Tensor or None) Embedding of a whole task's context set.
         :param ops_counter: (utils.OpsCounter or None) Object that counts operations performed.
         :return: (list::dict::torch.Tensor or list::dict::list::torch.Tensor or None) Parameters of all FiLM layers.
-        """ 
+        """
+        t1 = time.time()
+        feature_adapter_params = self.feature_adapter(task_embedding)
+
         if ops_counter:
+            torch.cuda.synchronize()
+            ops_counter.log_time(time.time() - t1)
             ops_counter.compute_macs(self.feature_adapter, task_embedding)
         
-        return self.feature_adapter(task_embedding)
+        return feature_adapter_params
     
     def _get_task_embedding(self, context_clips, ops_counter=None, reduction='mean'):
         """
@@ -186,9 +197,12 @@ class FewShotRecogniser(nn.Module):
         :param reduction: (str) Method to aggregate clip encodings from self.set_encoder.
         :return: (torch.Tensor or None) Task embedding.
         """ 
+        t1 = time.time()
         reps = self.set_encoder(context_clips)
 
         if ops_counter:
+            torch.cuda.synchronize()
+            ops_counter.log_time(time.time() - t1)
             ops_counter.compute_macs(self.set_encoder, context_clips)
 
         return self.set_encoder.aggregate(reps, reduction=reduction, switch_device=self.args.use_two_gpus)
@@ -207,9 +221,12 @@ class FewShotRecogniser(nn.Module):
         reps = []
         for batch_clips in context_clip_loader: 
             batch_clips = batch_clips.to(self.device, non_blocking=True)
+            t1 = time.time()
             batch_reps = self.set_encoder(batch_clips)
 
             if ops_counter:
+                torch.cuda.synchronize()
+                ops_counter.log_time(time.time() - t1)
                 ops_counter.compute_macs(self.set_encoder, batch_clips)
 
             reps.append(batch_reps)
@@ -223,9 +240,14 @@ class FewShotRecogniser(nn.Module):
         :param ops_counter: (utils.OpsCounter or None) Object that counts operations performed.
         :return: (torch.Tensor) Frame features pooled per clip i.e. as (num_clips) x (feat_dim).
         """ 
+        t1 = time.time()
+        pooled_features = self.frame_pooler(features)
         if ops_counter:
+            torch.cuda.synchronize()
+            ops_counter.log_time(time.time() - t1)
             ops_counter.add_macs(features.size(0) * features.size(1))
-        return self.frame_pooler(features)
+
+        return pooled_features
     
     def _freeze_extractor(self):
         """
@@ -307,11 +329,20 @@ class MultiStepFewShotRecogniser(FewShotRecogniser):
                 batch_context_clips = batch_context_clips.to(self.device)
                 batch_context_labels = batch_context_labels.to(self.device)
                 batch_context_logits = self.predict_a_batch(batch_context_clips, ops_counter=ops_counter, context=True)
+                t1 = time.time()
                 batch_context_loss = loss_fn(batch_context_logits, batch_context_labels)
                 batch_context_loss.backward()
+
+                if ops_counter:
+                    torch.cuda.synchronize()
+                    ops_counter.log_time(time.time() - t1)
                  
+            t1 = time.time()
             inner_loop_optimizer.step()
             inner_loop_optimizer.zero_grad()
+            if ops_counter:
+                torch.cuda.synchronize()
+                ops_counter.log_time(time.time() - t1)
  
     def predict(self, clips, ops_counter=None, context=False):
         """
@@ -322,11 +353,11 @@ class MultiStepFewShotRecogniser(FewShotRecogniser):
         :return: (torch.Tensor) Logits over object classes for each clip in clips.
         """
         clip_loader = get_clip_loader(clips, self.args.batch_size)
-        task_embedding = self._get_task_embedding_in_batches(clip_loader, ops_counter) # returns None, multi-step methods do not use set encoder
+        task_embedding = None # multi-step methods do not use set encoder
         self.feature_adapter_params = self._get_feature_adapter_params(task_embedding, ops_counter)
         features = self._get_features_in_batches(clip_loader, self.feature_adapter_params, ops_counter, context=context)
         features = self._pool_features(features, ops_counter)
-        return self.classifier.predict(features)
+        return self.classifier.predict(features, ops_counter)
     
     def predict_a_batch(self, clips, ops_counter=None, context=False):
         """
@@ -336,11 +367,11 @@ class MultiStepFewShotRecogniser(FewShotRecogniser):
         :param context: (bool) True if a context set is being processed, otherwise False.
         :return: (torch.Tensor) Logits over object classes for each clip in clips.
         """
-        task_embedding = self._get_task_embedding(clips, ops_counter) # returns None, multi-step methods do not use set encoder
+        task_embedding = None # multi-step methods do not use set encoder
         self.feature_adapter_params = self._get_feature_adapter_params(task_embedding, ops_counter)
         features = self._get_features(clips, self.feature_adapter_params, ops_counter, context=context)
         features = self._pool_features(features, ops_counter)
-        return self.classifier.predict(features)
+        return self.classifier.predict(features, ops_counter)
     
     def personalise_with_lite(self, context_clips, context_labels):
         NotImplementedError

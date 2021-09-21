@@ -43,7 +43,7 @@ class OpsCounter():
         self.task_params_counter += num_params
 
     def log_time(self, time):
-        self.task_time = time
+        self.task_time += time
 
     def compute_macs(self, module, *inputs):
         list_inputs = []
@@ -71,4 +71,4 @@ class OpsCounter():
         mean_ops, std_ops, mean_params = clever_format([mean_ops, std_ops, mean_params], "%.2f")
         mean_time = np.mean(self.time)
         std_time = np.std(self.time)
-        return "MACs to personalise: {0:} ({1:}) time to personalise: {2:d}m{3:02d}s ({4:d}m{5:02d}) #learnable params {6:} ({7:})".format(mean_ops, std_ops, int(mean_time / 60), int(mean_time % 60), int(std_time / 60), int(std_time % 60), mean_params, self.params_break_down)
+        return "MACs to personalise: {0:} ({1:}) time to personalise: {2:.2f}s ({3:.2f}s) #learnable params {4:} ({5:})".format(mean_ops, std_ops, mean_time, std_time, mean_params, self.params_break_down)

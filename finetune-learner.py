@@ -263,10 +263,8 @@ class Learner:
             finetuner = self.init_finetuner()
 
             # finetune for task of current user using their context set
-            t1 = time.time()
             learning_args=(self.args.inner_learning_rate, self.loss, 'sgd', 1.0)
             finetuner.personalise(context_clips, context_labels, learning_args, ops_counter=self.ops_counter)
-            self.ops_counter.log_time(time.time() - t1)
             # add task's ops to self.ops_counter
             self.ops_counter.task_complete()
 
