@@ -207,13 +207,14 @@ class Learner:
         self.model._cache_context_outputs(context_clips)
 
         task_loss = 0
+        target_logits = []
         target_clip_loader = get_clip_loader((target_clips, target_labels), self.args.batch_size, with_labels=True)
         for batch_target_clips, batch_target_labels in target_clip_loader:
             self.model.personalise_with_lite(context_clips, context_labels)
             batch_target_clips = batch_target_clips.to(device=self.device)
             batch_target_labels = batch_target_labels.to(device=self.device)
-            batch_target_logits = self.model.predict_a_batch(batch_target_clips)
-            self.train_evaluator.update_stats(batch_target_logits, batch_target_labels)
+            batch_target_logits = self.model.predict_a_batch(batch_target_clips)  
+            target_logits.extend(batch_target_logits.detach())
            
             loss_scaling = len(context_labels) / (self.args.num_lite_samples * self.args.tasks_per_batch)
             batch_loss = loss_scaling * self.loss(batch_target_logits, batch_target_labels)
@@ -224,6 +225,8 @@ class Learner:
             # reset task's params
             self.model._reset()
 
+        target_logits = torch.stack(target_logits)
+        self.train_evaluator.update_stats(target_logits, target_labels)
         return task_loss
     
     def validate(self):

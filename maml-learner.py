@@ -123,6 +123,7 @@ class Learner:
     def init_inner_loop_model(self):
         inner_loop_model = self.init_model()
         inner_loop_model.load_state_dict(self.model.state_dict(), strict=False) 
+        self.zero_grads(inner_loop_model)
         return inner_loop_model
 
     def zero_grads(self, model):
@@ -243,12 +244,13 @@ class Learner:
 
         # forward target set through inner_loop_model in batches
         task_loss = 0
+        target_logits = []
         target_clip_loader = get_clip_loader((target_clips, target_labels), self.args.batch_size, with_labels=True)
         for batch_target_clips, batch_target_labels in target_clip_loader:
             batch_target_clips = batch_target_clips.to(self.device)
             batch_target_labels = batch_target_labels.to(self.device)
-            batch_target_logits = inner_loop_model.predict_a_batch(batch_target_clips)
-            self.train_evaluator.update_stats(batch_target_logits, batch_target_labels)
+            batch_target_logits = inner_loop_model.predict_a_batch(batch_target_clips)  
+            target_logits.extend(batch_target_logits.detach())
            
             # compute loss on target batch
             loss_scaling = 1.0 / (self.args.batch_size * self.args.tasks_per_batch)
@@ -261,6 +263,10 @@ class Learner:
 
         # copy gradients from inner_loop_model to self.model
         self.copy_grads(inner_loop_model, self.model)
+       
+        # update evaluator with task accuracy
+        target_logits = torch.stack(target_logits)
+        self.train_evaluator.update_stats(target_logits, target_labels)
 
         return task_loss
 
