@@ -209,6 +209,13 @@ The following checkpoints have been trained on the ORBIT benchmark dataset using
 |           |     224    |  EfficientNet-B0  |         Y          |Not implemented |Not implemented |
 | FineTuner |     84     |     ResNet-18     |         N          |[`orbit_cleve_finetuner_resnet18_84.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cleve_finetuner_resnet18_84.pth)|[`orbit_cluve_finetuner_resnet18_84.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cluve_finetuner_resnet18_84.pth)|
 
+# Bounding boxes for ORBIT clutter videos
+
+The bounding boxes for all clutter video frames in the ORBIT benchmark dataset are available in [`data/orbit_clutter_bounding_boxes.zip`](https://github.com/microsoft/ORBIT-Dataset/raw/master/data/orbit_clutter_bounding_boxes.zip). Note, there is _one_ bounding box per frame (i.e. the location of the labelled/target object). Other details:
+* Bounding boxes are saved in train/validation/test folders, following the benchmark splits.
+* Bounding box coordinates are integers and saved in the format `[centre-x, centre-y, width, height]`.
+* When there is no object in the frame, the bounding box coordinates are [0, 0, 0, 0].
+
 # Download unfiltered ORBIT dataset
 
 Some collectors/objects/videos did not meet the minimum requirement to be included in the ORBIT benchmark dataset. The full unfiltered ORBIT dataset of 4733 videos (frame size: 1080x1080) of 588 objects can be downloaded and saved to `folder/to/save/dataset/orbit_unfiltered` by running the following script
