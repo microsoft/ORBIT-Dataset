@@ -234,7 +234,7 @@ To summarize and plot the unfiltered dataset, use `scripts/summarize_dataset.py`
 @article{bronskill2021lite,
   title={{Memory Efficient Meta-Learning with Large Images}},
   author={Bronskill, John and Massiceti, Daniela and Patacchiola, Massimiliano and Hofmann, Katja and Nowozin, Sebastian and Turner, Richard E.},
-  journal={arXiv preprint arXiv:2107.01105},
+  journal={Proceedings of the 35th Conference on Neural Information Processing Systems (NeurIPS)},
   year={2021}}
 ```
 ### For ORBIT dataset and baselines:
