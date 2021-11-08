@@ -213,8 +213,9 @@ The following checkpoints have been trained on the ORBIT benchmark dataset using
 
 The bounding boxes for all clutter video frames in the ORBIT benchmark dataset are available in [`data/orbit_clutter_bounding_boxes.zip`](https://github.com/microsoft/ORBIT-Dataset/raw/master/data/orbit_clutter_bounding_boxes.zip). Note, there is _one_ bounding box per frame (i.e. the location of the labelled/target object). Other details:
 * Bounding boxes are saved in train/validation/test folders, following the benchmark splits.
-* Bounding box coordinates are integers and saved in the format `[centre-x, centre-y, width, height]`.
-* When there is no object in the frame, the bounding box coordinates are [0, 0, 0, 0].
+* Bounding box coordinates are integers and saved in the format `[x, y, width, height]`, where `(0,0)` is the top left corner.
+* Bounding box coordinates are given for the original 1080x1080 frames. Thus `x` and `y` range from `[0,1079]`, and `width` and `height` range from `[1,1080]`.
+* When there is no object in the frame, the bounding box coordinates are `[0, 0, 0, 0]`.
 
 # Download unfiltered ORBIT dataset
 
