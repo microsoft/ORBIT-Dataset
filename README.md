@@ -166,7 +166,7 @@ Note, like MAML, it is possible to train/test on a GPU with less memory by reduc
 **FineTuner on large images** (see [Table 1](https://arxiv.org/pdf/2107.01105.pdf)) is run with 224x224 frames and an EfficientNet-B0 feature extractor. The model used in the paper is not trained on ORBIT, but instead freezes a pre-trained ImageNet extractor and finetunes a new classification layer for each ORBIT test task using standard batch processing on 1x Titan RTX 24GB GPU:
 ```
 python3 finetune-learner.py --data_path folder/to/save/dataset/orbit_benchmark_224 --frame_size 224 \
-                            --feature_extractor efficientnetb0 --feature_extractor_path features/pretrained/efficientnetb0_imagenet_224.pth \
+                            --feature_extractor efficientnetb0 --pretrained_extractor_path features/pretrained/efficientnetb0_imagenet_224.pth \
                             --mode test \
                             --classifier linear \
                             --context_video_type clean --target_video_type clutter \
