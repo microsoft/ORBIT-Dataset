@@ -83,6 +83,8 @@ def parse_args(learner='default'):
                         help="Number of test tasks per user (default: 5).")
     
     # training parameters
+    parser.add_argument("--seed", type=int, default=1991, 
+                        help="Random seed (default: 1991).")
     parser.add_argument("--epochs", "-e", type=int, default=10, 
                         help="Number of training epochs (default: 10).")
     parser.add_argument("--validation_on_epoch", type=int, default=5,

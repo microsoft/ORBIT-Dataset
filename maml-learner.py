@@ -44,9 +44,6 @@ from utils.data import get_clip_loader, unpack_task, attach_frame_history
 from utils.logging import print_and_log, get_log_files, stats_to_str
 from utils.eval_metrics import TrainEvaluator, ValidationEvaluator, TestEvaluator
 
-SEED = 1991
-random.seed(SEED)
-torch.manual_seed(SEED)
 torch.multiprocessing.set_sharing_strategy('file_system')
 
 def main():
@@ -63,6 +60,8 @@ class Learner:
         print_and_log(self.logfile, "Options: %s\n" % self.args)
         print_and_log(self.logfile, "Checkpoint Directory: %s\n" % self.checkpoint_dir)
 
+        random.seed(self.args.seed)
+        torch.manual_seed(self.args.seed)
         device_id = 'cpu'
         self.map_location = 'cpu'
         if torch.cuda.is_available() and self.args.gpu >= 0:
@@ -70,7 +69,7 @@ class Learner:
             cudnn.benchmark = False
             cudnn.deterministic = True
             device_id = 'cuda:' + str(self.args.gpu)
-            torch.cuda.manual_seed_all(SEED)
+            torch.cuda.manual_seed_all(self.args.seed)
             self.map_location = lambda storage, loc: storage.cuda()
 
         self.device = torch.device(device_id)
