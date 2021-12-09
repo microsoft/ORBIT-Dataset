@@ -232,22 +232,28 @@ class ORBITDataset(Dataset):
         :param clip_labels: (list::int) List of object labels for each clip.
         :param video_ids: (list::int) List of videos IDs corresponding to clip_paths.
         :param test_mode: (bool) If False, do not shuffle task, otherwise shuffle.
-        :return: (torch.Tensor or list::torch.Tensor, np.ndarray::str or list::np.ndarray, torch.Tensor or list::torch.Tensor) Frame data and paths organised in clips and their corresponding video-level labels.
+        :return: (torch.Tensor or list::torch.Tensor, np.ndarray::str or list::np.ndarray, torch.Tensor or list::torch.Tensor) Frame data, paths and video-level labels organised in clips (if train) or grouped and flattened by video (if test/validation).
         """
         clip_data = torch.stack(clip_data) if self.preload_clips else torch.tensor(clip_data)
         clip_paths = np.array(clip_paths)
         clip_labels = torch.tensor(clip_labels)
         
-        if test_mode:
-            clip_data_by_video, clip_paths_by_video, clip_labels_by_video = [], [], []
+        if test_mode: # group by video
+            frames_by_video, paths_by_video, labels_by_video = [], [], []
             unique_video_ids = np.unique(video_ids)
             for video_id in unique_video_ids:
+                # get all clips belonging to current video
                 idxs = video_ids == video_id
-                if self.preload_clips:
-                    clip_data_by_video.append(clip_data[idxs])
-                clip_paths_by_video.append(clip_paths[idxs])
-                clip_labels_by_video.append(clip_labels[idxs])
-            return clip_data_by_video, clip_paths_by_video, clip_labels_by_video
+                # flatten frames and paths from current video (assumed to be sorted)
+                video_frames = clip_data[idxs].flatten(end_dim=1) if self.preload_clips else None
+                video_paths = clip_paths[idxs].reshape(-1)
+                # all clips from the same video have the same label, so just return 1
+                video_label = clip_labels[idxs][0]
+                
+                frames_by_video.append(video_frames)
+                paths_by_video.append(video_paths)
+                labels_by_video.append(video_label)
+            return frames_by_video, paths_by_video, labels_by_video
         else:
             return self.shuffle_task(clip_data, clip_paths, clip_labels)
     
@@ -290,8 +296,7 @@ class ORBITDataset(Dataset):
         :return: (int) Mapped object label.
         """ 
         return label_map[ obj ]
-    
-    
+     
 class UserEpisodicORBITDataset(ORBITDataset):
     """
     Class for user-centric episodic sampling of ORBIT dataset.
@@ -374,10 +379,10 @@ class UserEpisodicORBITDataset(ORBITDataset):
         
         task_dict = { 
                 'context_clips' : context_clips,
-                'context_clip_paths' : context_clip_paths,
+                'context_paths' : context_clip_paths,
                 'context_labels' : context_labels,
                 'target_clips' : target_clips,
-                'target_clip_paths' : target_clip_paths,
+                'target_paths' : target_clip_paths,
                 'target_labels' : target_labels,
         }
 

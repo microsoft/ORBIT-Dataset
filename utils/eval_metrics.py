@@ -21,49 +21,47 @@ class Evaluator():
     def get_confidence_interval(self, scores):
         return (1.96 * np.std(scores)) / np.sqrt(len(scores))
     
-    """
-    Function to compute frame accuracy metric.
-    :param labels: (np.ndarray) Labels for every frame in a clip (if train) or video (if validation/test).
-    :param probs: (np.ndarray) Predicted probabilities over classes for every frame in a clip (if train) or video (if validation/test).
-    :return: (float) Average accuracy of a clip (if train) or video (if validation/test).
-    """
-    def get_frame_accuracy(self, labels, probs):
+    def get_frame_accuracy(self, label, probs):
+        """
+        Function to compute frame accuracy metric for a clip or video.
+        :param label: (np.ndarray) Clip (if train) or video (if validation/test) label.
+        :param probs: (np.ndarray) Predicted probabilities over classes for every frame in a clip (if train) or video (if validation/test).
+        :return: (float) Average frame accuracy for clip (if train) or video (if validation/test).
+        """
         predictions = np.argmax(probs, axis=-1)
-        correct = np.equal(labels, predictions).astype(int)
+        correct = np.equal(label, predictions).astype(int)
         return np.mean(correct)
     
-    """
-    Function to compute video accuracy metric.
-    :param labels: (np.ndarray) Video-level labels for a list of videos.
-    :param probs: (np.ndarray) Predicted probabilities over classes for every frame in a video.
-    :return: (float) Average accuracy of list of videos.
-    """
-    def get_video_accuracy(self, labels, probs):
-        predictions = self.get_video_prediction(probs)
-        correct_videos = np.equal(labels, predictions).astype(int)
-        return np.mean(correct_videos)
+    def get_video_accuracy(self, label, probs):
+        """
+        Function to compute video accuracy metric for a video.
+        :param label: (np.ndarray) Video label.
+        :param probs: (np.ndarray) Predicted probabilities over classes for every frame in a video.
+        :return: (float) Video accuracy for video.
+        """
+        most_freq_prediction = self.get_video_prediction(probs)
+        return 1.0 if most_freq_prediction == label else 0.0
     
-    """
-    Function to compute frames-to-recognition metric.
-    :param labels: (np.ndarray) Labels for every frame in a video.
-    :param probs: (np.ndarray) Predicted probabilities over classes for every frame in a video.
-    :return: (float) Number of frames (from first frame) until a correct prediction is made, normalized by video length.
-    """
-    def get_frames_to_recognition(self, labels, probs):
-       
+    def get_frames_to_recognition(self, label, probs):
+        """
+        Function to compute frames-to-recognition metric for a video.
+        :param label: (np.ndarray) Labels for every frame in a video.
+        :param probs: (np.ndarray) Predicted probabilities over classes for every frame in a video.
+        :return: (float) Number of frames (from first frame) until a correct prediction is made, normalized by video length.
+        """
         predictions = np.argmax(probs, axis=-1)
-        correct = np.where(labels == predictions)[0]
+        correct = np.where(label == predictions)[0]
         if len(correct) > 0:
-            return correct[0] / len(labels) # first correct frame / num_frames
-        else: # no frames with correct prediction
-            return 1.0
-     
-    """
-    Function to compute the video-level prediction for a video
-    :param probs: (np.ndarray) Predicted probabilities over classes for every frame in the video.
-    :return: (integer) Most frequent frame prediction in the video.
-    """
+            return correct[0] / len(predictions) # first correct frame index / num_frames
+        else:
+            return 1.0 # no correct predictions; last frame index / num_frames (i.e. 1.0)
+    
     def get_video_prediction(self, probs):
+        """
+        Function to compute the video-level prediction for a video
+        :param probs: (np.ndarray) Predicted probabilities over classes for every frame in the video.
+        :return: (integer) Most frequent frame prediction in the video.
+        """
         predictions = np.argmax(probs, axis=-1)
         return np.bincount(predictions).argmax()
 
@@ -102,9 +100,8 @@ class TestEvaluator(Evaluator):
     def __init__(self, stats_to_compute):
         super().__init__(stats_to_compute)
 
-        self.current_user = 0
-        self.all_frame_probs, self.all_frame_labels = [[]], [[]]
-    
+        self.reset()
+
     def save(self, path):
         if os.path.isfile(path):
             torch.save(self, path + ".test_evaluator")
@@ -113,7 +110,7 @@ class TestEvaluator(Evaluator):
 
     def reset(self):
         self.current_user = 0
-        self.all_frame_probs, self.all_frame_labels = [[]], [[]]
+        self.all_frame_probs, self.all_video_labels = [[]], [[]]
     
     def get_mean_stats(self, current_user=False):
         
@@ -123,17 +120,14 @@ class TestEvaluator(Evaluator):
         users_to_average = [self.current_user] if current_user else range(self.current_user)
         for stat in self.stats_to_compute:
             for user in users_to_average:
-                user_frame_probs = self.all_frame_probs[user] # [ list_of_video_1_probs, ..., list_of_video_N_probs ]
-                user_frame_labels = self.all_frame_labels[user] # [ list_of_video_1_labels, ..., list_of_video_N_labels ]
-                user_video_labels = [vl[0] for vl in self.all_frame_labels[user]] # [ video_1_label, ..., video_N_label ], first label in frame_labels ==  video label
+                user_frame_probs = self.all_frame_probs[user] # [ video_1_frame_probs, ..., video_N_frame_probs ]
+                user_video_labels = self.all_video_labels[user] # [ video_1_label, ..., video_N_label ]
                 
                 # loop over target videos for current user
                 if stat in self.frame_stat_fns: # if frame-based metric
-                    user_video_scores = [ self.frame_stat_fns[stat](l, p) for (l,p) in zip(user_frame_labels, user_frame_probs) ] # [ video_1_frame_acc, ..., video_N_frame_acc ]
+                    user_video_scores = [ self.frame_stat_fns[stat](l, p) for (l,p) in zip(user_video_labels, user_frame_probs) ] # [ video_1_frame_acc, ..., video_N_frame_acc ]
                 elif stat in self.video_stat_fns: # if video-based metric 
                     user_video_scores = [ self.video_stat_fns[stat](l, p) for (l,p) in zip(user_video_labels, user_frame_probs) ] # [ video_1_video_acc, ..., video_N_video_acc ]
-                elif stat in self.uncertainty_stat_fns: # if uncertainty-based metric
-                    user_video_scores = [ self.uncertainty_stat_fns[stat](l, p) for (l,p) in zip(user_frame_labels, user_frame_probs) ] # [ video_1_uncertainty, ..., video_N_uncertainty ]
 
                 user_mean = np.mean(user_video_scores) # compute mean over target videos for current user
                 user_scores[stat].append( user_mean ) # append mean over target videos for current user
@@ -156,16 +150,17 @@ class TestEvaluator(Evaluator):
 
     def next_user(self):
         self.current_user += 1
-        self.all_frame_labels.append([])
         self.all_frame_probs.append([])
+        self.all_video_labels.append([])
     
-    def append(self, test_logits, test_labels):
+    def append(self, frame_logits, video_label):
 
-        frame_labels = test_labels.clone().cpu().numpy()
-        frame_probs = torch.nn.functional.softmax(test_logits, dim=-1).detach().cpu().numpy()
+        frame_probs = torch.nn.functional.softmax(frame_logits, dim=-1).detach().cpu().numpy()
+        video_label = video_label.clone().cpu().numpy()
 
-        self.all_frame_labels[self.current_user].append(frame_labels)
-        self.all_frame_probs[self.current_user].append(frame_probs) 
+        # append results to current user to log
+        self.all_frame_probs[self.current_user].append(frame_probs)
+        self.all_video_labels[self.current_user].append(video_label)
     
 class ValidationEvaluator(TestEvaluator):
     def __init__(self, stats_to_compute):

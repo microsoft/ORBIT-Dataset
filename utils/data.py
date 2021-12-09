@@ -47,62 +47,58 @@ def get_clip_loader(clips, batch_size, with_labels=False):
         else: 
             return clips.split(batch_size)
 
-def attach_frame_history(clips, labels, clip_length):
+def attach_frame_history(frames, history_length):
     
-    # expand labels
-    labels = labels.view(-1,1).repeat(1, clip_length).view(-1)
+    if isinstance(frames, np.ndarray):
+        return attach_frame_history_paths(frames, history_length)
+    elif isinstance(frames, torch.Tensor):
+        return attach_frame_history_tensor(frames, history_length)
 
-    if isinstance(clips, np.ndarray):
-        return attach_frame_history_paths(clips, clip_length), labels
-    elif isinstance(clips, torch.Tensor):
-        return attach_frame_history_tensor(clips, clip_length), labels
-
-def attach_frame_history_paths(clip_paths, clip_length):
+def attach_frame_history_paths(frame_paths, history_length):
     """
-    Function to attach the immediate history of clip_length frames to each frame in an array of frame paths.
-    :param clip_paths: (np.ndarray) Clip paths.
-    :param clip_length: (int) Number of frames of history to append to each frame.
-    :return: (np.ndarray) Clip paths with attached frame history.
+    Function to attach the immediate history of history_length frames to each frame in an array of frame paths.
+    :param frame_paths: (np.ndarray) Frame paths.
+    :param history_length: (int) Number of frames of history to append to each frame.
+    :return: (np.ndarray) Frame paths with attached frame history.
     """
-    # pad with first frame so that frames 0 to clip_length-1 can be evaluated
-    frame_paths = clip_paths.reshape(-1)
-    frame_paths = np.concatenate([np.repeat(frame_paths[0], clip_length-1), frame_paths])
+    # pad with first frame so that frames 0 to history_length-1 can be evaluated
+    frame_paths = np.concatenate([np.repeat(frame_paths[0], history_length-1), frame_paths])
     
-    # for each frame path, attach its immediate history of clip_length frames
+    # for each frame path, attach its immediate history of history_length frames
     frame_paths = [ frame_paths ]
-    for l in range(1, clip_length):
+    for l in range(1, history_length):
         frame_paths.append( np.roll(frame_paths[0], shift=-l, axis=0) )
-    frame_paths_with_history = np.stack(frame_paths, axis=1) # of size num_clips x clip_length
+    frame_paths_with_history = np.stack(frame_paths, axis=1) # of size num_clips x history_length
     
-    # since frame_paths_with_history have wrapped around, remove last (clip_length - 1) frames
-    return frame_paths_with_history[:-(clip_length-1)]
+    # since frame_paths_with_history have wrapped around, remove last (history_length - 1) frames
+    return frame_paths_with_history[:-(history_length-1)]
 
-def attach_frame_history_tensor(clip_data, clip_length):
+def attach_frame_history_tensor(frames, history_length):
     """
-    Function to attach the immediate history of self.clip_length frames to each frame in a tensor of frame data.
-    param clip_data: (torch.Tensor) Frame data organised in clips of self.clip_length contiguous frames.
-    :return: (torch.Tensor) Clip data with attached frame history.
+    Function to attach the immediate history of history_length frames to each frame in a tensor of frame data.
+    param frames: (torch.Tensor) Frames.
+    :param history_length: (int) Number of frames of history to append to each frame.
+    :return: (torch.Tensor) Frames with attached frame history.
     """
-    # pad with first frame so that frames 0 to clip_length-1 can be evaluated
-    clip_data = clip_data.flatten(end_dim=1)
-    frame_0 = clip_data.narrow(0, 0, 1)
-    clip_data = torch.cat((frame_0.repeat(clip_length-1, 1, 1, 1), clip_data), dim=0)
+    # pad with first frame so that frames 0 to history_length-1 can be evaluated
+    frame_0 = frames.narrow(0, 0, 1)
+    frames = torch.cat((frame_0.repeat(history_length-1, 1, 1, 1), frames), dim=0)
 
-    # for each frame, attach its immediate history of clip_length frames
-    clip_data = [ clip_data ]
-    for l in range(1, clip_length):
-        clip_data.append( clip_data[0].roll(shifts=-l, dims=0) )
-    clip_data = torch.stack(clip_data, dim=1) # of size num_clips x clip_length
+    # for each frame, attach its immediate history of history_length frames
+    frames = [ frames ]
+    for l in range(1, history_length):
+        frames.append( frames[0].roll(shifts=-l, dims=0) )
+    frames_with_history = torch.stack(frames, dim=1) # of size num_clips x history_length
     
-    # since clip_data has wrapped around, remove last (clip_length - 1) frames
-    return clip_data[:-(clip_length-1)]
+    # since frames has wrapped around, remove last (history_length - 1) frames
+    return frames_with_history[:-(history_length-1)]
 
 def unpack_task(task_dict, device, context_to_device=True, target_to_device=False, preload_clips=False):
     context_clips = task_dict['context_clips']
-    context_clip_paths = task_dict['context_clip_paths']
+    context_paths = task_dict['context_paths']
     context_labels = task_dict['context_labels']
     target_clips = task_dict['target_clips']
-    target_clip_paths = task_dict['target_clip_paths']
+    target_paths = task_dict['target_paths']
     target_labels = task_dict['target_labels']
 
     if context_to_device and isinstance(context_labels, torch.Tensor):
@@ -111,6 +107,6 @@ def unpack_task(task_dict, device, context_to_device=True, target_to_device=Fals
         target_labels = target_labels.to(device)
    
     if preload_clips:
-        return context_clips, context_labels, target_clips, target_labels
+        return context_clips, context_paths, context_labels, target_clips, target_paths, target_labels
     else:
-        return context_clip_paths, context_labels, target_clip_paths, target_labels
+        return context_paths, context_paths, context_labels, target_paths, target_paths, target_labels
