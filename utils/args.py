@@ -75,6 +75,8 @@ def parse_args(learner='default'):
                         help="Do not preload clips per task from disk. Use if CPU memory is limited, but will mean slower training/testing.")
     parser.add_argument("--frame_size", type=int, default=224, choices=[84, 224],
                         help="Frame size (default: 224).")
+    parser.add_argument("--frame_annotations", nargs='+', type=str, default=[], choices=["object_present", "object_bounding_box"],
+                        help="Annotations to load per frame (default: None).")
     parser.add_argument("--train_task_type", type=str, default="user_centric", choices=["user_centric", "object_centric"],
                         help="Sample train tasks as user-centric or object-centric.")
     parser.add_argument("--train_tasks_per_user", type=int, default=50,
@@ -126,6 +128,9 @@ def verify_args(learner, args):
     
     if args.test_tasks_per_user > 1:
         print('{:}warning: --test_tasks_per_user > 1 which makes multiple (test_tasks_per_user) predictions per target frame. Only the last prediction is being saved to JSON{:}'.format(cyellow, cend))
+    
+    if len(args.frame_annotations) and args.no_preload_clips:
+        sys.exit('{:}error: loading annotations with --frame_annotations is currently not supported with --no_preload_clips{:}'.format(cred, cend))
 
     if 'train' in args.mode and not args.learn_extractor and not args.adapt_features:
         sys.exit('{:}error: at least one of "--learn_extractor" and "--adapt_features" must be used during training{:}'.format(cred, cend))

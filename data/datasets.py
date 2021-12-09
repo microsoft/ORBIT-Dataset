@@ -15,7 +15,7 @@ class ORBITDataset(Dataset):
     """
     Base class for ORBIT dataset.
     """
-    def __init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, num_clips, clip_length, preload_clips, frame_size, test_mode, with_cluster_labels, with_caps):
+    def __init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, num_clips, clip_length, preload_clips, frame_size, frame_annotations, test_mode, with_cluster_labels, with_caps):
         """
         Creates instance of ORBITDataset.
         :param root: (str) Path to train/validation/test folder in ORBIT dataset root folder.
@@ -29,6 +29,7 @@ class ORBITDataset(Dataset):
         :param clip_length: (int) Number of contiguous frames per video clip.
         :param preload_clips: (bool) If True, preload clips from disk and return as tensors, otherwise return clip paths.
         :param frame_size: (int) Size in pixels of preloaded frames.
+        :param frame_annotations: (list::str) Types of frame annotations to load from disk.
         :param test_mode: (bool) If True, returns validation/test tasks per user, otherwise returns train tasks per user.
         :param with_cluster_labels: (bool) If True, use object cluster labels, otherwise use raw object labels.
         :param with_caps: (bool) If True, impose caps on the number of videos per object, otherwise leave uncapped.
@@ -47,12 +48,22 @@ class ORBITDataset(Dataset):
         self.test_mode = test_mode
         self.with_cluster_labels = with_cluster_labels
         self.with_caps = with_caps
+        self.with_annotations = True if frame_annotations else False
+        self.frame_annotations = sorted(frame_annotations)
+        
+        if self.with_annotations:
+            self.annotation_dims = {'object_bounding_box': 4 }
+
+            self.annotation_root = Path(self.root.parent, "annotations", f"{self.root.name}")       # e.g. /data/orbit_benchmark/annotations/{train,validation,test}
+            if not self.annotation_root.is_dir():
+                raise IOError(f"Annotation directory {self.annotation_root} does not exist.")
 
         self.object_cap = object_cap
         self.context_shot_cap = 15
         self.target_shot_cap = 15
         self.clip_cap = 10 # limit number of clips sampled from any one video
         self.frame_cap = 1000 # limit number of frames in any one video
+        self.original_frame_size = 1080
         self.normalize_stats = {'mean' : [0.500, 0.436, 0.396], 'std' : [0.145, 0.143, 0.138]} # orbit mean train frame
 
         # Setup empty collections.
@@ -60,6 +71,7 @@ class ORBITDataset(Dataset):
         self.obj2name = []      # List of object id (int) to object label (str)
         self.obj2vids = []      # List of dictionaries: {"clean": list of video paths (str), "clutter": list of video paths (str)}
         self.video2id = {}      # Dictionary of video path (str): video id (int)
+        self.frame2anns = {}    # Dictionary of frame id (str): annotation information (dict of str to tensor)
 
         if self.with_cluster_labels:
             self.obj2cluster = []   # List of object id (int) to cluster id (int)
@@ -87,6 +99,11 @@ class ORBITDataset(Dataset):
             split_path = video_path.relative_to(self.root).parts
             assert len(split_path) == 4, f"Expected path to have 4 parts, but was {split_path}"
             user, object_name, video_type, video_id_str = split_path
+            
+            if self.with_annotations and video_type == 'clutter':
+                annotations = self.__load_video_annotations(video_id_str)
+                # TODO: load all annotations, but then only store some for frame_anns.
+                self.frame2anns.update(annotations)
 
             if user not in self.user2objs:
                 self.user2objs[user] = []
@@ -123,6 +140,33 @@ class ORBITDataset(Dataset):
         # We want a sorted list of unique users.
         self.users = sorted(self.user2objs.keys())
         self.num_users = len(self.users)
+    
+    def __load_video_annotations(self, video_id_str: str) -> Dict[str, Dict[str, Union[bool, torch.Tensor]]]:
+        annotation_path = Path(self.annotation_root, f"{video_id_str}.json")
+        with open(annotation_path, 'r') as annotation_file:
+            annotations = json.load(annotation_file)
+
+        _, _, video_type, _ = video_id_str.split("--", maxsplit=3)      # maxsplit is needed as some video ids contain --
+        assert video_type in ["clean", "clutter"], f"Invalid video type {video_type}. Should be clean or clutter."
+
+        for frame_id, annotation_dict in annotations.items():
+            for annotation in self.frame_annotations: # only load annotations specified in frame_annotaitons
+                if annotation in annotation_dict and annotation_dict[annotation]:
+                    if annotation == 'object_bounding_box':
+                        annotations[frame_id][annotation] = self.transform_bbox(annotation_dict[annotation])
+                    elif annotation == 'object_present':
+                        annotations[frame_id][annotation] = torch.tensor(annotation_dict[annotation]).int()
+        
+        return annotations
+
+    def transform_bbox(self, bbox):
+        bbox = torch.tensor([bbox["x"], bbox["y"], bbox["w"], bbox["h"]])
+        # Resize to fit current frame size.
+        bbox = ((bbox / self.original_frame_size) * self.frame_size).int()
+        # Clamp box to fit within frame.
+        bbox[0:2] = torch.clamp(bbox[0:2], 0, self.frame_size - 1)
+        bbox[2:4] = torch.clamp(bbox[2:4], 1, self.frame_size)
+        return bbox
 
     def __len__(self):
         return self.num_users
@@ -191,9 +235,10 @@ class ORBITDataset(Dataset):
         Function to sample clips from a list of videos.
         :param video_paths: (list::Path) List of video paths.
         :param num_clips: (str) Number of clips of contiguous frames to sample from the video. If 'max', sample all non-overlapping clips. If random, sample random number of non-overlapping clips.
-        :return: (list::torch.Tensor, list::np.ndarray, list::torch.Tensor, list::int) Frame data and paths organised in clips of self.clip_length contiguous frames, and video ID for each sampled clip.
+        :return: (list::torch.Tensor, list::np.ndarray, list::torch.Tensor, list::int) Frame data, paths, and annotations organised in clips of self.clip_length contiguous frames, and video ID for each sampled clip.
         """
         clip_data, clip_paths, video_ids = [], [], []
+        clip_annotations = { ann: [] for ann in self.frame_annotations }
         for video_path in video_paths:
             sampled_clip_paths = self.sample_clips_from_a_video(video_path, num_clips)
             clip_paths.extend(sampled_clip_paths)
@@ -201,10 +246,26 @@ class ORBITDataset(Dataset):
             if self.preload_clips:
                 sampled_clip_data = self.load_clips(sampled_clip_paths)
                 clip_data += sampled_clip_data
+            
+            if self.with_annotations:
+                sampled_clip_annotations = self.load_annotations(sampled_clip_paths)
+                clip_annotations = self.extend_ann_dict(clip_annotations, sampled_clip_annotations)
 
             video_ids.extend([self.video2id[video_path]] * len(sampled_clip_paths))
 
-        return clip_data, clip_paths, video_ids
+        return clip_data, clip_paths, video_ids, clip_annotations
+    
+    def extend_ann_dict(self, dest_dict, src_dict):
+        """
+        Function to extend all lists within a dictionary.
+        :param dest_dict: (dict::list) Dictionary of lists to extend.
+        :param src_dict: (dict::list) Dictionary of lists to add.
+        :return: (dict::list) Dictionary of extended lists.
+        """
+        for ann in dest_dict.keys():
+            dest_dict[ann].extend(src_dict[ann])
+
+        return dest_dict
 
     def load_clips(self, clip_paths):
         """
@@ -222,6 +283,29 @@ class ORBITDataset(Dataset):
                 loaded_clips[clip_idx, frame_idx] = self.load_and_transform_frame(frame_path)
 
         return loaded_clips
+    
+    def load_annotations(self, clip_paths: np.ndarray) -> torch.Tensor:
+        """
+        Function to load frame annotations, arrange in clips, from disk.
+        :param clip_paths: (np.ndarray::Path) Frame paths organised in clips of self.clip_length contiguous frames.
+        :return: (torch.Tensor) Frame annotations arranged in clips.
+        """
+        num_clips, clip_length = clip_paths.shape
+        assert clip_length == self.clip_length
+
+        loaded_annotations = {
+            annotation_name : torch.empty(num_clips, clip_length, self.annotation_dims.get(annotation_name, 1))     # The dimension defaults to 1 unless specified.
+            for annotation_name in self.frame_annotations }
+
+        for clip_idx in range(num_clips):
+            for frame_idx in range(clip_length):
+                frame_path = clip_paths[clip_idx, frame_idx]
+                for annotation_name in self.frame_annotations:
+                    if frame_path.name in self.frame2anns:
+                        frame_anns = self.frame2anns[frame_path.name]
+                        loaded_annotations[annotation_name][clip_idx, frame_idx] = frame_anns[annotation_name]
+
+        return loaded_annotations
 
     def load_and_transform_frame(self, frame_path):
         """
@@ -272,54 +356,65 @@ class ORBITDataset(Dataset):
             raise ValueError(f"num_clips should be 'max' or 'random', but was {num_clips}")
 
         return sampled_clip_paths
-
-    def prepare_task(self, clip_data, clip_paths, clip_labels, video_ids, test_mode=False):
+   
+    def prepare_set(self, clips, paths, labels, annotations, video_ids, test_mode=False):
         """
         Function to prepare context/target set for a task.
-        :param clip_data: (list::torch.Tensor) List of frame data organised in clips of self.clip_length contiguous frames.
-        :param clip_paths: (list::np.ndarray::str) List of frame paths organised in clips of self.clip_length contiguous frames.
-        :param clip_labels: (list::int) List of object labels for each clip.
-        :param video_ids: (list::int) List of videos IDs corresponding to clip_paths.
+        :param clips: (list::torch.Tensor) List of frame data organised in clips of self.clip_length contiguous frames.
+        :param paths: (list::np.ndarray::str) List of frame paths organised in clips of self.clip_length contiguous frames.
+        :param labels: (list::int) List of object labels for each clip.
+        :param annotations: (dict::list::torch.Tensor) Dictionary of annotations for each clip.
+        :param video_ids: (list::int) List of videos IDs corresponding to paths.
         :param test_mode: (bool) If False, do not shuffle task, otherwise shuffle.
-        :return: (torch.Tensor or list::torch.Tensor, np.ndarray::str or list::np.ndarray, torch.Tensor or list::torch.Tensor, dict::torch.Tensor or list::dict::torch.Tensor) Frame data, paths and video-level labels organised in clips (if train) or grouped and flattened by video (if test/validation).
+        :return: (torch.Tensor or list::torch.Tensor, np.ndarray::str or list::np.ndarray, torch.Tensor or list::torch.Tensor, dict::torch.Tensor or list::dict::torch.Tensor) Frame data, paths, video-level labels and annotations organised in clips (if train) or grouped and flattened by video (if test/validation).
         """
-        clip_data = torch.stack(clip_data) if self.preload_clips else torch.tensor(clip_data)
-        clip_paths = np.array(clip_paths)
-        clip_labels = torch.tensor(clip_labels)
+        clips = torch.stack(clips) if self.preload_clips else torch.tensor(clips)
+        paths = np.array(paths)
+        labels = torch.tensor(labels)
+        annotations = { ann: torch.stack(annotations[ann]) for ann in self.frame_annotations }
 
         if test_mode: # group by video
-            frames_by_video, paths_by_video, labels_by_video = [], [], []
+            frames_by_video, paths_by_video, labels_by_video, annotations_by_video = [], [], [], []
             unique_video_ids = np.unique(video_ids)
             for video_id in unique_video_ids:
                 # get all clips belonging to current video
                 idxs = video_ids == video_id
                 # flatten frames and paths from current video (assumed to be sorted)
-                video_frames = clip_data[idxs].flatten(end_dim=1) if self.preload_clips else None
-                video_paths = clip_paths[idxs].reshape(-1)
+                video_frames = clips[idxs].flatten(end_dim=1) if self.preload_clips else None
+                video_paths = paths[idxs].reshape(-1)
                 frames_by_video.append(video_frames)
                 paths_by_video.append(video_paths)
                 # all clips from the same video have the same label, so just return 1
-                video_label = clip_labels[idxs][0].view(-1)
+                video_label = labels[idxs][0]
                 labels_by_video.append(video_label)
-                
-            return frames_by_video, paths_by_video, labels_by_video
+                # get all frame annotations for current video
+                video_anns = { ann : annotations[ann][idxs].flatten(end_dim=1) for ann in self.frame_annotations } if self.with_annotations else None 
+                annotations_by_video.append(video_anns)
+            return frames_by_video, paths_by_video, labels_by_video, annotations_by_video
         else:
-            return self.shuffle_task(clip_data, clip_paths, clip_labels)
+            return self.shuffle_set(clips, paths, labels, annotations)
 
-    def shuffle_task(self, clip_data, clip_paths, clip_labels):
+    def shuffle_set(self, clips, paths, labels, annotations):
         """
         Function to shuffle clips and their object labels.
-        :param clip_data: (torch.Tensor) Frame data organised in clips of self.clip_length contiguous frames.
-        :param clip_paths: (np.ndarray::str) Frame paths organised in clips of self.clip_length contiguous frames.
-        :param clip_labels: (torch.Tensor) Object labels for each clip.
-        :return: (torch.Tensor, np.ndarray::str, torch.Tensor) Shuffled clips and their corresponding paths, and object labels.
+        :param clips: (torch.Tensor) Frame data organised in clips of self.clip_length contiguous frames.
+        :param paths: (np.ndarray::str) Frame paths organised in clips of self.clip_length contiguous frames.
+        :param labels: (torch.Tensor) Object labels for each clip.
+        :param annotations: (dict::torch.Tensor) Frame annotations organised in clips of self.clip_length contiguous frames.
+        :return: (torch.Tensor, np.ndarray::str, torch.Tensor, dict::torch.Tensor) Shuffled clips and their corresponding paths, object labels and annotations.
         """
-        idxs = np.arange(len(clip_paths))
+        idxs = np.arange(len(paths))
         random.shuffle(idxs)
         if self.preload_clips:
-            return clip_data[idxs], clip_paths[idxs], clip_labels[idxs]
+            if self.with_annotations:
+                return clips[idxs], paths[idxs], labels[idxs], { ann : annotations[ann][idxs] for ann in self.frame_annotations }
+            else:
+                return clips[idxs], paths[idxs], labels[idxs], annotations
         else:
-            return clip_data, clip_paths[idxs], clip_labels[idxs]
+            if self.with_annotations:
+                return clips, paths[idxs], labels[idxs], { ann : annotations[ann][idxs] for ann in self.frame_annotations }
+            else:
+                return clips, paths[idxs], labels[idxs], annotations
 
     def get_label_map(self, objects, with_cluster_labels=False):
         """
@@ -341,7 +436,7 @@ class UserEpisodicORBITDataset(ORBITDataset):
     """
     Class for user-centric episodic sampling of ORBIT dataset.
     """
-    def __init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, num_clips, clip_length, preload_clips, frame_size, test_mode, with_cluster_labels, with_caps):
+    def __init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, num_clips, clip_length, preload_clips, frame_size, frame_annotations, test_mode, with_cluster_labels, with_caps):
         """
         Creates instance of UserEpisodicORBITDataset.
         :param root: (str) Path to train/validation/test folder in ORBIT dataset root folder.
@@ -355,12 +450,13 @@ class UserEpisodicORBITDataset(ORBITDataset):
         :param clip_length: (int) Number of contiguous frames per video clip.
         :param preload_clips: (bool) If True, preload clips from disk and return as tensors, otherwise return clip paths.
         :param frame_size: (int) Size in pixels of preloaded frames.
+        :param frame_annotations: (list::str) Types of frame annotations to load from disk.
         :param test_mode: (bool) If True, returns validation/test tasks per user, otherwise returns train tasks per user.
         :param with_cluster_labels: (bool) If True, use object cluster labels, otherwise use raw object labels.
         :param with_caps: (bool) If True, impose caps on the number of videos per object, otherwise leave uncapped.
         :return: Nothing.
         """
-        ORBITDataset.__init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, num_clips, clip_length, preload_clips, frame_size, test_mode, with_cluster_labels, with_caps)
+        ORBITDataset.__init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, num_clips, clip_length, preload_clips, frame_size, frame_annotations, test_mode, with_cluster_labels, with_caps)
 
     def __getitem__(self, index):
         """
@@ -383,46 +479,52 @@ class UserEpisodicORBITDataset(ORBITDataset):
             self.context_shot_cap = 5 if way >=6 else 10
             self.target_shot_cap = 4 if way >=6 else 8
 
-        # for each object, sample context and target clips
+        # for each object, sample context and target sets
         obj_list = []
         context_clips, target_clips = [], []
-        context_clip_paths, target_clip_paths = [], []
-        context_clip_labels, target_clip_labels = [], []
-        context_clip_video_ids, target_clip_video_ids = [], []
+        context_paths, target_paths = [], []
+        context_labels, target_labels = [], []
+        context_video_ids, target_video_ids = [], []
+        context_annotations = { ann : [] for ann in self.frame_annotations}
+        target_annotations = { ann : [] for ann in self.frame_annotations}
         for obj in selected_objects:
             label = label_map[obj]
             obj_name = self.obj2name[obj]
             obj_list.append(obj_name)
 
             context_videos, target_videos = self.sample_videos(self.obj2vids[obj])
-            ccd, ccp, ccvi = self.sample_clips_from_videos(context_videos, self.context_num_clips)
-            context_clips.extend(ccd)
-            context_clip_paths.extend(ccp)
-            context_clip_labels.extend([label for _ in range(len(ccp))])
-            context_clip_video_ids.extend(ccvi)
+            cc, cp, cvi, ca = self.sample_clips_from_videos(context_videos, self.context_num_clips)
+            context_clips.extend(cc)
+            context_paths.extend(cp)
+            context_labels.extend([label for _ in range(len(cp))])
+            context_video_ids.extend(cvi)
+            context_annotations = self.extend_ann_dict(context_annotations, ca)
 
             if with_target_set:
-                tcd, tcp, tcvi = self.sample_clips_from_videos(target_videos, self.target_num_clips)
-                target_clips.extend(tcd)
-                target_clip_paths.extend(tcp)
-                target_clip_labels.extend([label for _ in range(len(tcp))])
-                target_clip_video_ids.extend(tcvi)
+                tc, tp, tvi, ta = self.sample_clips_from_videos(target_videos, self.target_num_clips)
+                target_clips.extend(tc)
+                target_paths.extend(tp)
+                target_labels.extend([label for _ in range(len(tp))])
+                target_video_ids.extend(tvi)
+                target_annotations = self.extend_ann_dict(target_annotations, ta)
 
-        context_clips, context_clip_paths, context_clip_labels = self.prepare_task(context_clips, context_clip_paths, context_clip_labels, context_clip_video_ids)
+        context_clips, context_paths, context_labels, context_annotations = self.prepare_set(context_clips, context_paths, context_labels, context_annotations, context_video_ids)
         if with_target_set:
-            target_clips, target_clip_paths, target_clip_labels = self.prepare_task(target_clips, target_clip_paths, target_clip_labels, target_clip_video_ids, test_mode=self.test_mode)
+            target_clips, target_paths, target_labels, target_annotations = self.prepare_set(target_clips, target_paths, target_labels, target_annotations, target_video_ids, test_mode=self.test_mode)
 
         task_dict = {
             # Data required for train / test
-            'context_clips': context_clips,                                    # Tensor of shape (num_context_clips, clip_length, channels, height, width), dtype float32
-            'context_paths': context_clip_paths,                               # Numpy array of shape (num_context_clips, clip_length), dtype PosixPath
-            'context_labels': context_clip_labels,                             # Tensor of shape (num_context_clips,), dtype int64
-            'target_clips': target_clips,                                      # If train, tensor of shape (num_target_clips, clip_length, channels, height, width), dtype float32. If test/validation, list of length (num_target_videos_for_user) of tensors, each of shape (num_video_frames, channels, height, width), dtype float32
-            'target_paths': target_clip_paths,                                 # If train, numpy array of shape (num_target_clips, clip_length), dtype PosixPath. If test/validation, list of length (num_target_videos_for_user) of numpy arrays, each of shape (num_video_frames,)), dtype PosixPath
-            'target_labels': target_clip_labels,                               # If train, tensor of shape (num_target_clips,), dtype int64. If test/validation, list of length (num_target_videos_for_user) of tensors, each of shape (1,), dtype int64
+            'context_clips': context_clips,                                     # Tensor of shape (num_context_clips, clip_length, channels, height, width), dtype float32
+            'context_paths': context_paths,                                     # Numpy array of shape (num_context_clips, clip_length), dtype PosixPath
+            'context_labels': context_labels,                                   # Tensor of shape (num_context_clips,), dtype int64
+            'context_annotations': context_annotations,                         # Dictionary. Empty if no annotations present. TODO: Add info for when annotations are present.
+            'target_clips': target_clips,                                       # If train, tensor of shape (num_target_clips, clip_length, channels, height, width), dtype float32. If test/validation, list of length (num_target_videos_for_user) of tensors, each of shape (num_video_frames, channels, height, width), dtype float32
+            'target_paths': target_paths,                                       # If train, numpy array of shape (num_target_clips, clip_length), dtype PosixPath. If test/validation, list of length (num_target_videos_for_user) of numpy arrays, each of shape (num_video_frames,)), dtype PosixPath
+            'target_labels': target_labels,                                     # If train, tensor of shape (num_target_clips,), dtype int64. If test/validation, list of length (num_target_videos_for_user) of tensors, each of shape (1,), dtype int64
+            'target_annotations': target_annotations,                           # Dictionary. Empty if no annotations present. TODO: Add info for when annotations are present.
             # Extra information, to be used in logging and results.
-            'user_id': user,                                                   # Single string, e.g. 'P123'
-            'object_list': obj_list                                            # Ordered list of strings for all objects in this task.
+            'user_id': user,                                                    # Single string, e.g. 'P123'
+            'object_list': obj_list                                             # Ordered list of strings for all objects in this task.
         }
         return task_dict
 
@@ -430,7 +532,7 @@ class ObjectEpisodicORBITDataset(ORBITDataset):
     """
     Class for object-centric episodic sampling of ORBIT dataset.
     """
-    def __init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, num_clips, clip_length, preload_clips, frame_size, test_mode, with_cluster_labels, with_caps):
+    def __init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, num_clips, clip_length, preload_clips, frame_size, frame_annotations, test_mode, with_cluster_labels, with_caps):
         """
         Creates instance of ObjectEpisodicORBITDataset.
         :param root: (str) Path to train/validation/test folder in ORBIT dataset root folder.
@@ -444,12 +546,13 @@ class ObjectEpisodicORBITDataset(ORBITDataset):
         :param clip_length: (int) Number of contiguous frames per video clip.
         :param preload_clips: (bool) If True, preload clips from disk and return as tensors, otherwise return clip paths.
         :param frame_size: (int) Size in pixels of preloaded frames.
+        :param frame_annotations: (list::str) Types of frame annotations to load from disk.
         :param test_mode: (bool) If True, returns validation/test tasks per user, otherwise returns train tasks per user.
         :param with_cluster_labels: (bool) If True, use object cluster labels, otherwise use raw object labels.
         :param with_caps: (bool) If True, impose caps on the number of videos per object, otherwise leave uncapped.
         :return: Nothing.
         """
-        ORBITDataset.__init__(self, root, way_method, object_cap, subsample_factor, clip_length, preload_clips, frame_size, test_mode, with_cluster_labels, with_caps)
+        ORBITDataset.__init__(self, root, way_method, object_cap, subsample_factor, clip_length, preload_clips, frame_size, frame_annotations, test_mode, with_cluster_labels, with_caps)
 
     def __getitem__(self, index):
         """
@@ -470,46 +573,51 @@ class ObjectEpisodicORBITDataset(ORBITDataset):
             self.context_shot_cap = 5 if way >=6 else 10
             self.target_shot_cap = 4 if way >=6 else 8
 
-        # for each object, sample context and target clips
+        # for each object, sample context and target sets
         obj_list = []
         context_clips, target_clips = [], []
-        context_clip_paths, target_clip_paths = [], []
-        context_clip_labels, target_clip_labels = [], []
-        context_clip_video_ids, target_clip_video_ids = [], []
+        context_paths, target_paths = [], []
+        context_labels, target_labels = [], []
+        context_video_ids, target_video_ids = [], []
+        context_annotations = { ann : [] for ann in self.frame_annotations}
+        target_annotations = { ann : [] for ann in self.frame_annotations}
         for obj in selected_objects:
             label = label_map[obj]
             obj_name = self.obj2name[obj]
             obj_list.append(obj_name)
 
             context_videos, target_videos = self.sample_videos(self.obj2vids[obj])
-            ccd, ccp, ccvi = self.sample_clips_from_videos(context_videos, self.context_num_clips)
-            context_clips.extend(ccd)
-            context_clip_paths.extend(ccp)
-            context_clip_labels.extend([label for _ in range(len(ccp))])
-            context_clip_video_ids.extend(ccvi)
+            cc, cp, cvi, ca = self.sample_clips_from_videos(context_videos, self.context_num_clips)
+            context_clips.extend(cc)
+            context_paths.extend(cp)
+            context_labels.extend([label for _ in range(len(cp))])
+            context_video_ids.extend(cvi)
+            context_annotations = self.extend_ann_dict(context_annotations, ca)
 
             if with_target_set:
-                tcd, tcp, tcvi = self.sample_clips_from_videos(target_videos, self.target_num_clips)
-                target_clips.extend(tcd)
-                target_clip_paths.extend(tcp)
-                target_clip_labels.extend([label for _ in range(len(tcp))])
-                target_clip_video_ids.extend(tcvi)
+                tc, tp, tvi, ta = self.sample_clips_from_videos(target_videos, self.target_num_clips)
+                target_clips.extend(tc)
+                target_paths.extend(tp)
+                target_labels.extend([label for _ in range(len(tp))])
+                target_video_ids.extend(tvi)
+                target_annotations = self.extend_ann_dict(target_annotations, ta)
 
-        context_clips, context_clip_paths, context_clip_labels = self.prepare_task(context_clips, context_clip_paths, context_clip_labels, context_clip_video_ids)
+        context_clips, context_paths, context_labels, context_annotations = self.prepare_set(context_clips, context_paths, context_labels, context_annotations, context_video_ids)
         if with_target_set:
-            target_clips, target_clip_paths, target_clip_labels = self.prepare_task(target_clips, target_clip_paths, target_clip_labels, target_clip_video_ids, test_mode=self.test_mode)
+            target_clips, target_paths, target_labels, target_annotations = self.prepare_set(target_clips, target_paths, target_labels, target_annotations, target_video_ids, test_mode=self.test_mode)
 
         task_dict = {
             # Data required for train / test
-            'context_clips': context_clips,                                    # Tensor of shape (num_context_clips, clip_length, channels, height, width), dtype float32
-            'context_paths': context_clip_paths,                               # Numpy array of shape (num_context_clips, clip_length), dtype PosixPath
-            'context_labels': context_clip_labels,                             # Tensor of shape (num_context_clips,), dtype int64
-            'target_clips': target_clips,                                      # If train, tensor of shape (num_target_clips, clip_length, channels, height, width), dtype float32. If test/validation, list of length (num_target_videos_for_user) of tensors, each of shape (num_video_frames, channels, height, width), dtype float32
-            'target_paths': target_clip_paths,                                 # If train, numpy array of shape (num_target_clips, clip_length), dtype PosixPath. If test/validation, list of length (num_target_videos_for_user) of numpy arrays, each of shape (num_video_frames,)), dtype PosixPath
-            'target_labels': target_clip_labels,                               # If train, tensor of shape (num_target_clips,), dtype int64. If test/validation, list of length (num_target_videos_for_user) of tensors, each of shape (1,), dtype int64
+            'context_clips': context_clips,                                     # Tensor of shape (num_context_clips, clip_length, channels, height, width), dtype float32
+            'context_paths': context_paths,                                     # Numpy array of shape (num_context_clips, clip_length), dtype PosixPath
+            'context_labels': context_labels,                                   # Tensor of shape (num_context_clips,), dtype int64
+            'context_annotations': context_annotations,                         # Dictionary. Empty if no annotations present. TODO: Add info for when annotations are present.
+            'target_clips': target_clips,                                       # If train, tensor of shape (num_target_clips, clip_length, channels, height, width), dtype float32. If test/validation, list of length (num_target_videos_for_user) of tensors, each of shape (num_video_frames, channels, height, width), dtype float32
+            'target_paths': target_paths,                                       # If train, numpy array of shape (num_target_clips, clip_length), dtype PosixPath. If test/validation, list of length (num_target_videos_for_user) of numpy arrays, each of shape (num_video_frames,)), dtype PosixPath
+            'target_labels': target_labels,                                     # If train, tensor of shape (num_target_clips,), dtype int64. If test/validation, list of length (num_target_videos_for_user) of tensors, each of shape (1,), dtype int64
+            'target_annotations': target_annotations,                           # Dictionary. Empty if no annotations present. TODO: Add info for when annotations are present.
             # Extra information, to be used in logging and results.
-            'user_id': user,                                                   # Single string, e.g. 'P123'
-            'object_list': obj_list                                            # Ordered list of strings for all objects in this task.
+            'user_id': user,                                                    # Single string, e.g. 'P123'
+            'object_list': obj_list                                             # Ordered list of strings for all objects in this task.
         }
-        
         return task_dict

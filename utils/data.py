@@ -107,20 +107,24 @@ def attach_frame_history_tensor(frames, history_length):
     return frames_with_history[:-(history_length-1)]
 
 def unpack_task(task_dict, device, context_to_device=True, target_to_device=False, preload_clips=False):
+   
     context_clips = task_dict['context_clips']
     context_paths = task_dict['context_paths']
     context_labels = task_dict['context_labels']
+    context_annotations = task_dict['context_annotations']
     target_clips = task_dict['target_clips']
     target_paths = task_dict['target_paths']
     target_labels = task_dict['target_labels']
-    object_list = task_dict['object_list']
+    target_annotations = task_dict['target_annotations']
 
     if context_to_device and isinstance(context_labels, torch.Tensor):
         context_labels = context_labels.to(device)
     if target_to_device and isinstance(target_labels, torch.Tensor):
         target_labels = target_labels.to(device)
-   
+  
+    import pdb
+    pdb.set_trace()
     if preload_clips:
-        return context_clips, context_paths, context_labels, target_clips, target_paths, target_labels, object_list
+        return context_clips, context_paths, context_labels, target_clips, target_paths, target_labels
     else:
-        return context_paths, context_paths, context_labels, target_paths, target_paths, target_labels, object_list
+        return context_paths, context_paths, context_labels, target_paths, target_paths, target_labels
