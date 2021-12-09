@@ -19,7 +19,7 @@ def parse_args(learner='default'):
                         help="Path to model to load and test.")
     parser.add_argument("--mode", choices=["train", "test", "train_test"], default="train_test",
                         help="Whether to run training only, testing only, or both training and testing.")
-    parser.add_argument("--feature_extractor", type=str, default="resnet18", choices=["resnet18", "mnasnet10", "efficientnetb0"],
+    parser.add_argument("--feature_extractor", type=str, default="resnet18", choices=["resnet18", "efficientnetb0"],
                         help="Feature extractor backbone (default: resnet18).")
     parser.add_argument("--learn_extractor", action="store_true",
                         help="If True, learns all parameters of feature extractor at 0.1 of learning rate.")
@@ -61,14 +61,14 @@ def parse_args(learner='default'):
                         help="Video type for target set (default: clutter).")
     parser.add_argument("--subsample_factor", type=int, default=1,
                         help="Factor to subsample video by before sampling clips (default: 1).")
-    parser.add_argument("--train_context_num_clips", default=4,
-                        help="Number of clips to sample per context video for a train task (default: 4).")
-    parser.add_argument("--train_target_num_clips", default=4,
-                        help="Number of clips to sample per target video for a train task (default: 4).")
-    parser.add_argument("--test_context_num_clips", default=8,
-                        help="Number of clips to sample per context video for a test/validation task (default: 8).")
-    parser.add_argument("--test_target_num_clips", type=str, default='max',
-                        help="Sample all overlapping clips per target video for a test/validation task (default: max).")
+    parser.add_argument("--train_context_num_clips", type=str, default='random', choices=['random', 'max'],
+                        help="Number of clips to sample per context video for a train task (default: random).")
+    parser.add_argument("--train_target_num_clips", type=str, default='random', choices=['random', 'max'],
+                        help="Number of clips to sample per target video for a train task (default: random).")
+    parser.add_argument("--test_context_num_clips", type=str, default='random', choices=['random', 'max'],
+                        help="Number of clips to sample per context video for a test/validation task (default: random).")
+    parser.add_argument("--test_target_num_clips", type=str, default='max', choices=['max'],
+                        help="Number of overlapping to sample per target video for a test/validation task (default: max).")
     parser.add_argument("--clip_length", type=int, default=8,
                         help="Number of frames to sample per clip (default: 8).")
     parser.add_argument("--no_preload_clips", action="store_true",

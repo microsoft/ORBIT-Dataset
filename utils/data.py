@@ -3,30 +3,43 @@
 
 import torch
 import numpy as np
+from PIL import Image
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
-
-from data.transforms import orbit_transform
+import torchvision.transforms.functional as tv_F
 
 class DatasetFromClipPaths(Dataset):
     def __init__(self, clip_paths, with_labels):
         super().__init__()
+        #TODO currently doesn't support loading of annotations
         self.with_labels = with_labels
         if self.with_labels:
             self.clip_paths, self.clip_labels = clip_paths
         else:
             self.clip_paths = clip_paths
         
-        self.transformation = orbit_transform
-
+        self.normalize_stats = {'mean' : [0.500, 0.436, 0.396], 'std' : [0.145, 0.143, 0.138]} # orbit mean train frame
+        
     def __getitem__(self, index):
         clip = []
         for frame_path in self.clip_paths[index]:
-            clip.append(self.transformation(frame_path))
+            frame = self.load_and_transform_frame(frame_path)
+            clip.append(frame)
+    
         if self.with_labels:
             return torch.stack(clip, dim=0), self.clip_labels[index]
         else:
             return torch.stack(clip, dim=0)
+    
+    def load_and_transform_frame(self, frame_path):
+        """
+        Function to load and transform frame.
+        :param frame_path: (str) Path to frame.
+        :return: (torch.Tensor) Loaded and transformed frame.
+        """
+        frame = Image.open(frame_path)
+        frame = tv_F.to_tensor(frame)
+        return tv_F.normalize(frame, mean=self.normalize_stats['mean'], std=self.normalize_stats['std'])
 
     def __len__(self):
         return len(self.clip_paths)
