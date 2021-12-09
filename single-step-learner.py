@@ -123,7 +123,7 @@ class Learner:
         self.evaluation_metrics = ['frame_acc', 'frames_to_recognition', 'video_acc'] 
         self.train_evaluator = TrainEvaluator(self.train_metrics)
         self.validation_evaluator = ValidationEvaluator(self.evaluation_metrics)
-        self.test_evaluator = TestEvaluator(self.evaluation_metrics) 
+        self.test_evaluator = TestEvaluator(self.evaluation_metrics, self.checkpoint_dir)
     
     def run(self):
         if self.args.mode == 'train' or self.args.mode == 'train_test':
@@ -184,7 +184,7 @@ class Learner:
         self.logfile.close()
 
     def train_task(self, task_dict):
-        context_clips, context_paths, context_labels, target_clips, target_paths, target_labels = unpack_task(task_dict, self.device, target_to_device=True, preload_clips=self.args.preload_clips)
+        context_clips, context_paths, context_labels, target_clips, target_paths, target_labels, object_list = unpack_task(task_dict, self.device, target_to_device=True, preload_clips=self.args.preload_clips)
 
         self.model.personalise(context_clips, context_labels)
         target_logits = self.model.predict(target_clips)
@@ -200,7 +200,7 @@ class Learner:
         return task_loss
 
     def train_task_with_lite(self, task_dict):
-        context_clips, context_paths, context_labels, target_clips, target_paths, target_labels = unpack_task(task_dict, self.device, preload_clips=self.args.preload_clips)
+        context_clips, context_paths, context_labels, target_clips, target_paths, target_labels, object_list = unpack_task(task_dict, self.device, preload_clips=self.args.preload_clips)
 
         # compute and save personalise outputs of whole context set with back-propagation disabled
         self.model._cache_context_outputs(context_clips)
@@ -234,7 +234,7 @@ class Learner:
         with torch.no_grad():
             # loop through validation tasks (num_validation_users * num_test_tasks_per_user)
             for step, task_dict in enumerate(self.validation_queue.get_tasks()):
-                context_clips, context_clip_paths, context_labels, target_frames_by_video, target_paths_by_video, target_labels_by_video = unpack_task(task_dict, self.device, preload_clips=self.args.preload_clips)
+                context_clips, context_clip_paths, context_labels, target_frames_by_video, target_paths_by_video, target_labels_by_video, object_list = unpack_task(task_dict, self.device, preload_clips=self.args.preload_clips)
 
                 # if this is a user's first task, cache their target videos (as they remain constant for all their tasks - ie. num_test_tasks_per_user)
                 if step % self.args.test_tasks_per_user == 0:
@@ -246,7 +246,7 @@ class Learner:
                 for video_frames, video_paths, video_label in zip(cached_target_frames_by_video, cached_target_paths_by_video, cached_target_labels_by_video):
                     video_clips = attach_frame_history(video_frames, self.args.clip_length)
                     video_logits = self.model.predict(video_clips)
-                    self.validation_evaluator.append(video_logits, video_label)
+                    self.validation_evaluator.append_video(video_logits, video_label, video_paths, object_list)
 
                 # reset task's params
                 self.model._reset()
@@ -279,7 +279,7 @@ class Learner:
         with torch.no_grad():
             # loop through test tasks (num_test_users * num_test_tasks_per_user)
             for step, task_dict in enumerate(self.test_queue.get_tasks()):
-                context_clips, context_clip_paths, context_labels, target_frames_by_video, target_paths_by_video, target_labels_by_video = unpack_task(task_dict, self.device, preload_clips=self.args.preload_clips)
+                context_clips, context_clip_paths, context_labels, target_frames_by_video, target_paths_by_video, target_labels_by_video, object_list = unpack_task(task_dict, self.device, preload_clips=self.args.preload_clips)
 
                 # if this is a user's first task, cache their target videos (as they remain constant for all their tasks - ie. num_test_tasks_per_user)
                 if step % self.args.test_tasks_per_user == 0:
@@ -294,7 +294,7 @@ class Learner:
                 for video_frames, video_paths, video_label in zip(cached_target_frames_by_video, cached_target_paths_by_video, cached_target_labels_by_video):
                     video_clips = attach_frame_history(video_frames, self.args.clip_length)
                     video_logits = self.model.predict(video_clips)
-                    self.test_evaluator.append(video_logits, video_label)
+                    self.test_evaluator.append_video(video_logits, video_label, video_paths, object_list)
 
                 # reset task's params
                 self.model._reset()
@@ -311,8 +311,7 @@ class Learner:
             stats_per_user_str, stats_per_video_str = stats_to_str(stats_per_user), stats_to_str(stats_per_video)
             mean_ops_stats = self.ops_counter.get_mean_stats()
             print_and_log(self.logfile, 'test [{0:}]\n per-user stats: {1:}\n per-video stats: {2:}\n model stats: {3:}\n'.format(path, stats_per_user_str, stats_per_video_str,  mean_ops_stats))
-            evaluator_save_path = path if self.checkpoint_dir in path else self.checkpoint_dir
-            self.test_evaluator.save(evaluator_save_path)
+            self.test_evaluator.save()
             self.test_evaluator.reset()
 
     def save_checkpoint(self, epoch):

@@ -123,6 +123,9 @@ def verify_args(learner, args):
     cred = "\33[31m"
     cyellow = "\33[33m"
     cend = "\33[0m"
+    
+    if args.test_tasks_per_user > 1:
+        print('{:}warning: --test_tasks_per_user > 1 which makes multiple (test_tasks_per_user) predictions per target frame. Only the last prediction is being saved to JSON{:}'.format(cyellow, cend))
 
     if 'train' in args.mode and not args.learn_extractor and not args.adapt_features:
         sys.exit('{:}error: at least one of "--learn_extractor" and "--adapt_features" must be used during training{:}'.format(cred, cend))

@@ -422,7 +422,7 @@ class UserEpisodicORBITDataset(ORBITDataset):
             'target_labels': target_clip_labels,                               # If train, tensor of shape (num_target_clips,), dtype int64. If test/validation, list of length (num_target_videos_for_user) of tensors, each of shape (1,), dtype int64
             # Extra information, to be used in logging and results.
             'user_id': user,                                                   # Single string, e.g. 'P123'
-            'object_strs': obj_list                                            # Ordered list of strings for all objects in this task.
+            'object_list': obj_list                                            # Ordered list of strings for all objects in this task.
         }
         return task_dict
 
@@ -509,7 +509,7 @@ class ObjectEpisodicORBITDataset(ORBITDataset):
             'target_labels': target_clip_labels,                               # If train, tensor of shape (num_target_clips,), dtype int64. If test/validation, list of length (num_target_videos_for_user) of tensors, each of shape (1,), dtype int64
             # Extra information, to be used in logging and results.
             'user_id': user,                                                   # Single string, e.g. 'P123'
-            'object_strs': obj_list                                            # Ordered list of strings for all objects in this task.
+            'object_list': obj_list                                            # Ordered list of strings for all objects in this task.
         }
         
         return task_dict
