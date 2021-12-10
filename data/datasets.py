@@ -151,22 +151,20 @@ class ORBITDataset(Dataset):
 
         for frame_id, annotation_dict in annotations.items():
             for annotation in self.frame_annotations: # only load annotations specified in frame_annotaitons
-                if annotation in annotation_dict and annotation_dict[annotation]:
+                if annotation in annotation_dict and annotation_dict[annotation] is not None:
                     if annotation == 'object_bounding_box':
-                        annotations[frame_id][annotation] = self.transform_bbox(annotation_dict[annotation])
+                        bbox = annotation_dict[annotation]
+                        bbox = torch.tensor([bbox["x"], bbox["y"], bbox["w"], bbox["h"]])
+                        # Resize to fit current frame size.
+                        bbox = ((bbox / self.original_frame_size) * self.frame_size).int()
+                        # Clamp box to fit within frame.
+                        bbox[0:2] = torch.clamp(bbox[0:2], 0, self.frame_size - 1)
+                        bbox[2:4] = torch.clamp(bbox[2:4], 1, self.frame_size)
+                        annotations[frame_id][annotation] = bbox
                     elif annotation == 'object_present':
                         annotations[frame_id][annotation] = torch.tensor(annotation_dict[annotation]).int()
         
         return annotations
-
-    def transform_bbox(self, bbox):
-        bbox = torch.tensor([bbox["x"], bbox["y"], bbox["w"], bbox["h"]])
-        # Resize to fit current frame size.
-        bbox = ((bbox / self.original_frame_size) * self.frame_size).int()
-        # Clamp box to fit within frame.
-        bbox[0:2] = torch.clamp(bbox[0:2], 0, self.frame_size - 1)
-        bbox[2:4] = torch.clamp(bbox[2:4], 1, self.frame_size)
-        return bbox
 
     def __len__(self):
         return self.num_users
@@ -237,27 +235,27 @@ class ORBITDataset(Dataset):
         :param num_clips: (str) Number of clips of contiguous frames to sample from the video. If 'max', sample all non-overlapping clips. If random, sample random number of non-overlapping clips.
         :return: (list::torch.Tensor, list::np.ndarray, list::torch.Tensor, list::int) Frame data, paths, and annotations organised in clips of self.clip_length contiguous frames, and video ID for each sampled clip.
         """
-        clip_data, clip_paths, video_ids = [], [], []
-        clip_annotations = { ann: [] for ann in self.frame_annotations }
+        clips, paths, video_ids = [], [], []
+        annotations = { ann: [] for ann in self.frame_annotations }
         for video_path in video_paths:
-            sampled_clip_paths = self.sample_clips_from_a_video(video_path, num_clips)
-            clip_paths.extend(sampled_clip_paths)
+            sampled_paths = self.sample_clips_from_a_video(video_path, num_clips)
+            paths.extend(sampled_paths)
 
             if self.preload_clips:
-                sampled_clip_data = self.load_clips(sampled_clip_paths)
-                clip_data += sampled_clip_data
+                sampled_clips = self.load_clips(sampled_paths)
+                clips += sampled_clips
             
             if self.with_annotations:
-                sampled_clip_annotations = self.load_annotations(sampled_clip_paths)
-                clip_annotations = self.extend_ann_dict(clip_annotations, sampled_clip_annotations)
+                sampled_annotations = self.load_annotations(sampled_paths)
+                annotations = self.extend_ann_dict(annotations, sampled_annotations)
 
-            video_ids.extend([self.video2id[video_path]] * len(sampled_clip_paths))
+            video_ids.extend([self.video2id[video_path]] * len(sampled_paths))
 
-        return clip_data, clip_paths, video_ids, clip_annotations
+        return clips, paths, video_ids, annotations
     
     def extend_ann_dict(self, dest_dict, src_dict):
         """
-        Function to extend all lists within a dictionary.
+        Function to extend all lists within annotation dictionary.
         :param dest_dict: (dict::list) Dictionary of lists to extend.
         :param src_dict: (dict::list) Dictionary of lists to add.
         :return: (dict::list) Dictionary of extended lists.
@@ -267,43 +265,44 @@ class ORBITDataset(Dataset):
 
         return dest_dict
 
-    def load_clips(self, clip_paths):
+    def load_clips(self, paths):
         """
         Function to load clips from disk into tensors.
-        :param clip_paths: (np.ndarray::str) Frame paths organised in clips of self.clip_length contiguous frames.
+        :param paths: (np.ndarray::str) Frame paths organised in clips of self.clip_length contiguous frames.
         :return: (torch.Tensor) Clip data.
         """
-        num_clips, clip_length = clip_paths.shape
+        num_clips, clip_length = paths.shape
         assert clip_length == self.clip_length
         loaded_clips = torch.zeros(num_clips, clip_length, 3, self.frame_size, self.frame_size)
 
         for clip_idx in range(num_clips):
             for frame_idx in range(clip_length):
-                frame_path = clip_paths[clip_idx, frame_idx]
+                frame_path = paths[clip_idx, frame_idx]
                 loaded_clips[clip_idx, frame_idx] = self.load_and_transform_frame(frame_path)
 
         return loaded_clips
     
-    def load_annotations(self, clip_paths: np.ndarray) -> torch.Tensor:
+    def load_annotations(self, paths: np.ndarray) -> torch.Tensor:
         """
         Function to load frame annotations, arrange in clips, from disk.
-        :param clip_paths: (np.ndarray::Path) Frame paths organised in clips of self.clip_length contiguous frames.
+        :param paths: (np.ndarray::Path) Frame paths organised in clips of self.clip_length contiguous frames.
         :return: (torch.Tensor) Frame annotations arranged in clips.
         """
-        num_clips, clip_length = clip_paths.shape
+        num_clips, clip_length = paths.shape
         assert clip_length == self.clip_length
 
         loaded_annotations = {
-            annotation_name : torch.empty(num_clips, clip_length, self.annotation_dims.get(annotation_name, 1))     # The dimension defaults to 1 unless specified.
-            for annotation_name in self.frame_annotations }
+            annotation : torch.empty(num_clips, clip_length, self.annotation_dims.get(annotation, 1))     # The dimension defaults to 1 unless specified.
+            for annotation in self.frame_annotations }
 
         for clip_idx in range(num_clips):
             for frame_idx in range(clip_length):
-                frame_path = clip_paths[clip_idx, frame_idx]
-                for annotation_name in self.frame_annotations:
-                    if frame_path.name in self.frame2anns:
-                        frame_anns = self.frame2anns[frame_path.name]
-                        loaded_annotations[annotation_name][clip_idx, frame_idx] = frame_anns[annotation_name]
+                frame_path = paths[clip_idx, frame_idx]
+                frame_name = frame_path.name
+                for annotation in self.frame_annotations:
+                    if frame_name in self.frame2anns and self.frame2anns[frame_name][annotation] is not None:
+                        frame_anns = self.frame2anns[frame_name]
+                        loaded_annotations[annotation][clip_idx, frame_idx] = frame_anns[annotation]
 
         return loaded_annotations
 
@@ -340,22 +339,22 @@ class ORBITDataset(Dataset):
         assert num_subsampled_frames % self.clip_length == 0
 
         if num_clips == 'max': # select all non_overlapping clips from video
-            selected_frame_paths = subsampled_frame_paths[:max_num_clips*self.clip_length]
-            sampled_clip_paths = np.array(selected_frame_paths).reshape((max_num_clips, self.clip_length))
+            sampled_paths = subsampled_frame_paths[:max_num_clips*self.clip_length]
+            sampled_paths = np.array(sampled_paths).reshape((max_num_clips, self.clip_length))
         elif num_clips == 'random': # select random number of non-overlapping clips from video
             capped_num_clips = min(max_num_clips, self.clip_cap)
             random_num_clips = random.choice(range(1, capped_num_clips+1))
 
             frame_idxs = range(self.clip_length, len(subsampled_frame_paths)+1, self.clip_length)
             key_frame_idxs = random.sample(frame_idxs, random_num_clips)
-            sampled_clip_paths = []
+            sampled_paths = []
             for idx in key_frame_idxs:
-                sampled_clip_paths.append(subsampled_frame_paths[idx-self.clip_length:idx])
-            sampled_clip_paths = np.array(sampled_clip_paths)
+                sampled_paths.append(subsampled_frame_paths[idx-self.clip_length:idx])
+            sampled_paths = np.array(sampled_paths)
         else:
             raise ValueError(f"num_clips should be 'max' or 'random', but was {num_clips}")
 
-        return sampled_clip_paths
+        return sampled_paths # shape (num_clips, clip_length)
    
     def prepare_set(self, clips, paths, labels, annotations, video_ids, test_mode=False):
         """
@@ -432,46 +431,12 @@ class ORBITDataset(Dataset):
                 map_dict[old_label] = new_labels[i]
             return map_dict
 
-class UserEpisodicORBITDataset(ORBITDataset):
-    """
-    Class for user-centric episodic sampling of ORBIT dataset.
-    """
-    def __init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, num_clips, clip_length, preload_clips, frame_size, frame_annotations, test_mode, with_cluster_labels, with_caps):
-        """
-        Creates instance of UserEpisodicORBITDataset.
-        :param root: (str) Path to train/validation/test folder in ORBIT dataset root folder.
-        :param way_method: (str) If 'random', select a random number of objects per user. If 'max', select all objects per user.
-        :param object_cap: (int or str) Cap on number of objects per user. If 'max', leave uncapped.
-        :param shot_methods: (str, str) Method for sampling videos for context and target sets.
-        :param shots: (int, int) Number of videos to sample for context and target sets.
-        :param video_types: (str, str) Video types to sample for context and target sets.
-        :param subsample_factor: (int) Factor to subsample video frames before sampling clips.
-        :param num_clips: (str, str) Number of clips of contiguous frames to sample from the video. If 'max', sample all non-overlapping clips. If random, sample random number of non-overlapping clips.
-        :param clip_length: (int) Number of contiguous frames per video clip.
-        :param preload_clips: (bool) If True, preload clips from disk and return as tensors, otherwise return clip paths.
-        :param frame_size: (int) Size in pixels of preloaded frames.
-        :param frame_annotations: (list::str) Types of frame annotations to load from disk.
-        :param test_mode: (bool) If True, returns validation/test tasks per user, otherwise returns train tasks per user.
-        :param with_cluster_labels: (bool) If True, use object cluster labels, otherwise use raw object labels.
-        :param with_caps: (bool) If True, impose caps on the number of videos per object, otherwise leave uncapped.
-        :return: Nothing.
-        """
-        ORBITDataset.__init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, num_clips, clip_length, preload_clips, frame_size, frame_annotations, test_mode, with_cluster_labels, with_caps)
-
-    def __getitem__(self, index):
-        """
-        Function to get a user-centric task as a set of (context and target) clips and labels.
-        :param index: (tuple) Task ID and whether to load task target set.
-        :return: (dict) Context and target set data for task.
-        """
-        task_id, with_target_set = index
-        user = self.users[task_id] # get user (each task == user id)
-        user_objects = self.user2objs[user] # get user's objects
-        num_user_objects = len(user_objects)
+    def sample_task(self, task_objects, with_target_set):
 
         # select way (number of classes/objects) randomly
-        way = self.compute_way(num_user_objects)
-        selected_objects = random.sample(user_objects, way) # without replacement
+        num_objects = len(task_objects)
+        way = self.compute_way(num_objects)
+        selected_objects = random.sample(task_objects, way) # without replacement
         label_map = self.get_label_map(selected_objects, self.with_cluster_labels)
 
         # set caps, for memory purposes (used in training)
@@ -523,10 +488,47 @@ class UserEpisodicORBITDataset(ORBITDataset):
             'target_labels': target_labels,                                     # If train, tensor of shape (num_target_clips,), dtype int64. If test/validation, list of length (num_target_videos_for_user) of tensors, each of shape (1,), dtype int64
             'target_annotations': target_annotations,                           # Dictionary. Empty if no annotations present. TODO: Add info for when annotations are present.
             # Extra information, to be used in logging and results.
-            'user_id': user,                                                    # Single string, e.g. 'P123'
             'object_list': obj_list                                             # Ordered list of strings for all objects in this task.
         }
         return task_dict
+
+class UserEpisodicORBITDataset(ORBITDataset):
+    """
+    Class for user-centric episodic sampling of ORBIT dataset.
+    """
+    def __init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, num_clips, clip_length, preload_clips, frame_size, frame_annotations, test_mode, with_cluster_labels, with_caps):
+        """
+        Creates instance of UserEpisodicORBITDataset.
+        :param root: (str) Path to train/validation/test folder in ORBIT dataset root folder.
+        :param way_method: (str) If 'random', select a random number of objects per user. If 'max', select all objects per user.
+        :param object_cap: (int or str) Cap on number of objects per user. If 'max', leave uncapped.
+        :param shot_methods: (str, str) Method for sampling videos for context and target sets.
+        :param shots: (int, int) Number of videos to sample for context and target sets.
+        :param video_types: (str, str) Video types to sample for context and target sets.
+        :param subsample_factor: (int) Factor to subsample video frames before sampling clips.
+        :param num_clips: (str, str) Number of clips of contiguous frames to sample from the video. If 'max', sample all non-overlapping clips. If random, sample random number of non-overlapping clips.
+        :param clip_length: (int) Number of contiguous frames per video clip.
+        :param preload_clips: (bool) If True, preload clips from disk and return as tensors, otherwise return clip paths.
+        :param frame_size: (int) Size in pixels of preloaded frames.
+        :param frame_annotations: (list::str) Types of frame annotations to load from disk.
+        :param test_mode: (bool) If True, returns validation/test tasks per user, otherwise returns train tasks per user.
+        :param with_cluster_labels: (bool) If True, use object cluster labels, otherwise use raw object labels.
+        :param with_caps: (bool) If True, impose caps on the number of videos per object, otherwise leave uncapped.
+        :return: Nothing.
+        """
+        ORBITDataset.__init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, num_clips, clip_length, preload_clips, frame_size, frame_annotations, test_mode, with_cluster_labels, with_caps)
+
+    def __getitem__(self, index):
+        """
+        Function to get a user-centric task as a set of (context and target) clips and labels.
+        :param index: (tuple) Task ID and whether to load task target set.
+        :return: (dict) Context and target set data for task.
+        """
+
+        task_id, with_target_set = index
+        user = self.users[task_id] # get user (each task == user id)
+        user_objects = self.user2objs[user] # get user's objects
+        return self.sample_task(user_objects, with_target_set)
 
 class ObjectEpisodicORBITDataset(ORBITDataset):
     """
@@ -561,63 +563,5 @@ class ObjectEpisodicORBITDataset(ORBITDataset):
         :return: (dict) Context and target set data for task.
         """
         _, with_target_set = index
-        num_objects = len(self.obj2vids)
-
-        # select way (number of classes/objects) randomly
-        way = self.compute_way(num_objects)
-        selected_objects = random.sample(range(0, num_objects), way) # without replacement
-        label_map = self.get_label_map(selected_objects, self.with_cluster_labels)
-
-        # set caps, for memory purposes (used in training)
-        if self.with_caps:
-            self.context_shot_cap = 5 if way >=6 else 10
-            self.target_shot_cap = 4 if way >=6 else 8
-
-        # for each object, sample context and target sets
-        obj_list = []
-        context_clips, target_clips = [], []
-        context_paths, target_paths = [], []
-        context_labels, target_labels = [], []
-        context_video_ids, target_video_ids = [], []
-        context_annotations = { ann : [] for ann in self.frame_annotations}
-        target_annotations = { ann : [] for ann in self.frame_annotations}
-        for obj in selected_objects:
-            label = label_map[obj]
-            obj_name = self.obj2name[obj]
-            obj_list.append(obj_name)
-
-            context_videos, target_videos = self.sample_videos(self.obj2vids[obj])
-            cc, cp, cvi, ca = self.sample_clips_from_videos(context_videos, self.context_num_clips)
-            context_clips.extend(cc)
-            context_paths.extend(cp)
-            context_labels.extend([label for _ in range(len(cp))])
-            context_video_ids.extend(cvi)
-            context_annotations = self.extend_ann_dict(context_annotations, ca)
-
-            if with_target_set:
-                tc, tp, tvi, ta = self.sample_clips_from_videos(target_videos, self.target_num_clips)
-                target_clips.extend(tc)
-                target_paths.extend(tp)
-                target_labels.extend([label for _ in range(len(tp))])
-                target_video_ids.extend(tvi)
-                target_annotations = self.extend_ann_dict(target_annotations, ta)
-
-        context_clips, context_paths, context_labels, context_annotations = self.prepare_set(context_clips, context_paths, context_labels, context_annotations, context_video_ids)
-        if with_target_set:
-            target_clips, target_paths, target_labels, target_annotations = self.prepare_set(target_clips, target_paths, target_labels, target_annotations, target_video_ids, test_mode=self.test_mode)
-
-        task_dict = {
-            # Data required for train / test
-            'context_clips': context_clips,                                     # Tensor of shape (num_context_clips, clip_length, channels, height, width), dtype float32
-            'context_paths': context_paths,                                     # Numpy array of shape (num_context_clips, clip_length), dtype PosixPath
-            'context_labels': context_labels,                                   # Tensor of shape (num_context_clips,), dtype int64
-            'context_annotations': context_annotations,                         # Dictionary. Empty if no annotations present. TODO: Add info for when annotations are present.
-            'target_clips': target_clips,                                       # If train, tensor of shape (num_target_clips, clip_length, channels, height, width), dtype float32. If test/validation, list of length (num_target_videos_for_user) of tensors, each of shape (num_video_frames, channels, height, width), dtype float32
-            'target_paths': target_paths,                                       # If train, numpy array of shape (num_target_clips, clip_length), dtype PosixPath. If test/validation, list of length (num_target_videos_for_user) of numpy arrays, each of shape (num_video_frames,)), dtype PosixPath
-            'target_labels': target_labels,                                     # If train, tensor of shape (num_target_clips,), dtype int64. If test/validation, list of length (num_target_videos_for_user) of tensors, each of shape (1,), dtype int64
-            'target_annotations': target_annotations,                           # Dictionary. Empty if no annotations present. TODO: Add info for when annotations are present.
-            # Extra information, to be used in logging and results.
-            'user_id': user,                                                    # Single string, e.g. 'P123'
-            'object_list': obj_list                                             # Ordered list of strings for all objects in this task.
-        }
-        return task_dict
+        all_objects = range(0, len(self.obj2vids)) # task can consider all possible objects, not just 1 user's objects
+        return self.sample_task(all_objects, with_target_set)

@@ -116,15 +116,14 @@ def unpack_task(task_dict, device, context_to_device=True, target_to_device=Fals
     target_paths = task_dict['target_paths']
     target_labels = task_dict['target_labels']
     target_annotations = task_dict['target_annotations']
+    object_list = task_dict['object_list']
 
     if context_to_device and isinstance(context_labels, torch.Tensor):
         context_labels = context_labels.to(device)
     if target_to_device and isinstance(target_labels, torch.Tensor):
         target_labels = target_labels.to(device)
   
-    import pdb
-    pdb.set_trace()
     if preload_clips:
-        return context_clips, context_paths, context_labels, target_clips, target_paths, target_labels
+        return context_clips, context_paths, context_labels, target_clips, target_paths, target_labels, object_list
     else:
-        return context_paths, context_paths, context_labels, target_paths, target_paths, target_labels
+        return context_paths, context_paths, context_labels, target_paths, target_paths, target_labels, object_list
