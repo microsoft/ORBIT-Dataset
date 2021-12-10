@@ -191,7 +191,7 @@ class TestEvaluator(Evaluator):
         self.all_frame_predictions[self.current_user].append(frame_predictions)
         self.all_video_labels[self.current_user].append(video_label)
         self.all_frame_paths[self.current_user].append(frame_paths)
-        if self.current_user in self.user2userid: # if a new user, log them (and their objects)
+        if self.current_user not in self.user2userid: # if a new user, log them (and their objects)
             self.user_object_lists.append(object_list)
             user_id = Path(frame_paths[0]).stem.split('--')[0]
             self.user2userid[self.current_user] = user_id
