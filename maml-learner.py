@@ -318,6 +318,8 @@ class Learner:
         self.model.load_state_dict(torch.load(path, map_location=self.map_location), strict=False)
         self.ops_counter.set_base_params(self.model)
         
+        # loop through test tasks (num_test_users * num_test_tasks_per_user)
+        num_test_tasks = self.test_queue.num_users * self.test_tasks_per_user
         for step, task_dict in enumerate(self.test_queue.get_tasks()):
             context_clips, context_paths, context_labels, target_frames_by_video, target_paths_by_video, target_labels_by_video, object_list = unpack_task(task_dict, self.device, context_to_device=False, preload_clips=self.args.preload_clips)
             
@@ -348,7 +350,8 @@ class Learner:
                 if (step+1) % self.args.test_tasks_per_user == 0:
                     _, current_user_stats = self.test_evaluator.get_mean_stats(current_user=True)
                     print_and_log(self.logfile, 'test user {0:}/{1:} stats: {2:}'.format(self.test_evaluator.current_user+1, self.test_queue.num_users, stats_to_str(current_user_stats)))
-                    self.test_evaluator.next_user()
+                    if (step+1) < num_test_tasks:
+                        self.test_evaluator.next_user()
 
         stats_per_user, stats_per_video = self.test_evaluator.get_mean_stats()
         stats_per_user_str, stats_per_video_str = stats_to_str(stats_per_user), stats_to_str(stats_per_video)
