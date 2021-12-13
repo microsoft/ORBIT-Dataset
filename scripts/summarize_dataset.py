@@ -13,8 +13,8 @@ def main():
     parser.add_argument("--combine_modes", action="store_true", help="Summarize stats across train/validation/test folders")
     args = parser.parse_args()
 
+    modes = ['train', 'validation', 'test'] if args.with_modes else ['']
     if not args.combine_modes:
-        modes = os.listdir(args.data_path) if args.with_modes else ['']
         for mode in modes:
             num_videos_by_user, num_frames_by_user, video_types = get_tallies_by_user(os.path.join(args.data_path, mode))
 
@@ -25,7 +25,6 @@ def main():
 
             print_stats_as_table(mode, len(num_videos_by_user), num_frames_stats_by_type, count_stats_by_type)
     else:
-        modes = os.listdir(args.data_path) if args.with_modes else ['']
         num_videos_by_user, num_frames_by_user = [], []
         for mode in modes:
             nv, nf, video_types = get_tallies_by_user(os.path.join(args.data_path, mode))
