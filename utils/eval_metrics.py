@@ -99,8 +99,9 @@ class TestEvaluator(Evaluator):
 
     def save(self):
         output = {}
-        assert len(self.user_object_lists) == self.current_user
-        for user in range(self.current_user): # loop through users
+        num_users = self.current_user+1
+        assert len(self.user_object_lists) == num_users
+        for user in range(num_users): # loop through users
             user_frame_paths = self.all_frame_paths[user]
             user_frame_predictions = self.all_frame_predictions[user]
             user_object_list = self.user_object_lists[user]
