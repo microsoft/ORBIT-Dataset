@@ -234,6 +234,7 @@ class Learner:
         self.model.set_test_mode(True) 
         with torch.no_grad():
             # loop through validation tasks (num_validation_users * num_test_tasks_per_user)
+            num_val_tasks = self.validation_queue.num_users * self.args.test_tasks_per_user
             for step, task_dict in enumerate(self.validation_queue.get_tasks()):
                 context_clips, context_clip_paths, context_labels, target_frames_by_video, target_paths_by_video, target_labels_by_video, object_list = unpack_task(task_dict, self.device, preload_clips=self.args.preload_clips)
 
@@ -256,7 +257,8 @@ class Learner:
                 if (step+1) % self.args.test_tasks_per_user == 0:
                     _, current_user_stats = self.validation_evaluator.get_mean_stats(current_user=True)
                     print_and_log(self.logfile, 'validation user {0:}/{1:} stats: {2:}'.format(self.validation_evaluator.current_user+1, self.validation_queue.num_users, stats_to_str(current_user_stats)))
-                    self.validation_evaluator.next_user()
+                    if (step+1) < num_val_tasks:
+                        self.validation_evaluator.next_user()
                     
             stats_per_user, stats_per_video = self.validation_evaluator.get_mean_stats()
             stats_per_user_str, stats_per_video_str = stats_to_str(stats_per_user), stats_to_str(stats_per_video)
