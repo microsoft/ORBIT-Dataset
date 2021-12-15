@@ -141,7 +141,8 @@ class TestEvaluator(Evaluator):
         user_scores = { stat: [] for stat in self.stats_to_compute }
         video_scores = { stat: [] for stat in self.stats_to_compute }
 
-        users_to_average = [self.current_user] if current_user else range(self.current_user)
+        num_users = self.current_user+1
+        users_to_average = [self.current_user] if current_user else range(num_users):
         for stat in self.stats_to_compute:
             for user in users_to_average:
                 user_frame_preds = self.all_frame_predictions[user] # [ video_1_frame_predss, ..., video_N_frame_preds ]
