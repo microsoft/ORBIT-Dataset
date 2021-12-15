@@ -209,13 +209,16 @@ The following checkpoints have been trained on the ORBIT benchmark dataset using
 |           |     224    |  EfficientNet-B0  |         Y          |Not implemented |Not implemented |
 | FineTuner |     84     |     ResNet-18     |         N          |[`orbit_cleve_finetuner_resnet18_84.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cleve_finetuner_resnet18_84.pth)|[`orbit_cluve_finetuner_resnet18_84.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cluve_finetuner_resnet18_84.pth)|
 
-# Bounding boxes for ORBIT clutter videos
+# Annotations for ORBIT clutter videos
 
 The bounding boxes for all clutter video frames in the ORBIT benchmark dataset are available in [`data/orbit_clutter_bounding_boxes.zip`](https://github.com/microsoft/ORBIT-Dataset/raw/master/data/orbit_clutter_bounding_boxes.zip). Note, there is _one_ bounding box per frame (i.e. the location of the labelled/target object). Other details:
-* Bounding boxes are saved in train/validation/test folders, following the benchmark splits.
-* Bounding box coordinates are integers and saved in the format `[x, y, width, height]`, where `(0,0)` is the top left corner.
-* Bounding box coordinates are given for the original 1080x1080 frames. Thus `x` and `y` range from `[0,1079]`, and `width` and `height` range from `[1,1080]`.
-* When there is no object in the frame, the bounding box coordinates are `[0, 0, 0, 0]`.
+* The annotations are saved in train/validation/test folders, following the benchmark splits.
+* In each folder, there is a JSON per video (e.g. `P177--bag--clutter--Zj_1HvmNWejSbmYf_m4YzxHhSUUl-ckBtQ-GSThX_4E.json`).
+* Each JSON contains keys that correspond to all frames in that video.
+* For each frame, annotations are saved in the format `{"P177--bag--clutter--Zj_1HvmNWejSbmYf_m4YzxHhSUUl-ckBtQ-GSThX_4E-00001.jpg": {"object_bounding_box": {"x": int, "y": int, "w": int, "h": int}, "object_present": true}, ...}` where `(0,0)` is the top left corner. The coordinates are given for the original 1080x1080 frames, thus `x` and `y` range from `[0,1079]`, and `width` and `height` from `[1,1080]`.
+* When there is no object in the frame, the annotations are given as `{"object_bounding_box": null, "object_present": false}`.
+
+You can use the `--frame_annotations` argument to load these annotations. The argument can take the values `object_bounding_box`, `object_present`, or both. This will load the specified annotations (for clutter frames only) and return them in a dictionary. At present, the code does not use these annotations for training/testing. To do so, you will need to return them in the `unpack_task` function in `utils/data.py`.
 
 # Download unfiltered ORBIT dataset
 
