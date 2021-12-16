@@ -436,7 +436,7 @@ class ORBITDataset(Dataset):
         # select way (number of classes/objects) randomly
         num_objects = len(task_objects)
         way = self.compute_way(num_objects)
-        selected_objects = random.sample(task_objects, way) # without replacement
+        selected_objects = sorted(random.sample(task_objects, way)) # without replacement
         label_map = self.get_label_map(selected_objects, self.with_cluster_labels)
 
         # set caps, for memory purposes (used in training)
