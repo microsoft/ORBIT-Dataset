@@ -149,21 +149,18 @@ class Learner:
                     
                     if self.args.print_by_step:
                         current_stats_str = stats_to_str(self.train_evaluator.get_current_stats())
-                        print_and_log(self.logfile, 'epoch [{}/{}][{}/{}], train loss: {:.7f}, {:}, time/task: {:d}m{:02d}s'.format(epoch+1, self.args.epochs, step+1, total_steps, task_loss.item(), current_stats_str.strip(), int(task_time / 60), int(task_time % 60)))
+                        print_and_log(self.logfile, f'epoch [{epoch+1}/{self.args.epochs}][{step+1}/{total_steps}], train loss: {task_loss.item():.7f}, {current_stats_str.strip()}, time/task: {int(task_time/60):d}m{int(task_time%60):02d}s')
 
                     if ((step + 1) % self.args.tasks_per_batch == 0) or (step == (total_steps - 1)):
                         self.optimizer.step()
                         self.optimizer.zero_grad()
                 
                 mean_stats = self.train_evaluator.get_mean_stats()
+                mean_epoch_loss = torch.Tensor(losses).mean().item()
                 seconds = time.time() - since
                 # print
                 print_and_log(self.logfile, '-'*150)
-                print_and_log(self.logfile,'epoch [{}/{}] train loss: {:.7f} {:} time/epoch: {:d}m{:02d}s' \
-                                            .format(epoch + 1, self.args.epochs, \
-                                            torch.Tensor(losses).mean().item(), \
-                                            stats_to_str(mean_stats), \
-                                            int(seconds / 60), int(seconds % 60)))
+                print_and_log(self.logfile, f'epoch [{epoch+1}/{self.args.epochs}] train loss: {mean_epoch_loss:.7f} {stats_to_str(mean_stats)} time/epoch: {int(seconds/60):d}m{int(seconds%60):02d}s')
                 print_and_log(self.logfile, '-'*150)
                 self.train_evaluator.reset()
                 self.save_checkpoint(epoch + 1)
@@ -308,14 +305,14 @@ class Learner:
                 # if this is the user's last task, get the average performance for the user
                 if (step+1) % self.args.test_tasks_per_user == 0:
                     _, current_user_stats = self.test_evaluator.get_mean_stats(current_user=True)
-                    print_and_log(self.logfile, 'test user {0:}/{1:} stats: {2:}'.format(self.test_evaluator.current_user+1, self.test_queue.num_users, stats_to_str(current_user_stats)))
+                    print_and_log(self.logfile, f'{self.args.test_set} user {self.test_evaluator.current_user+1}/{self.test_queue.num_users} stats: {stats_to_str(current_user_stats)}')
                     if (step+1) < num_test_tasks:
                         self.test_evaluator.next_user()
                     
             stats_per_user, stats_per_video = self.test_evaluator.get_mean_stats()
             stats_per_user_str, stats_per_video_str = stats_to_str(stats_per_user), stats_to_str(stats_per_video)
             mean_ops_stats = self.ops_counter.get_mean_stats()
-            print_and_log(self.logfile, 'test [{0:}]\n per-user stats: {1:}\n per-video stats: {2:}\n model stats: {3:}\n'.format(path, stats_per_user_str, stats_per_video_str,  mean_ops_stats))
+            print_and_log(self.logfile, f'{self.args.test_set} [{path}]\n per-user stats: {stats_per_user_str}\n per-video stats: {stats_per_video_str}\n model stats: {mean_ops_stats}\n')
             self.test_evaluator.save()
             self.test_evaluator.reset()
 
