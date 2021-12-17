@@ -64,7 +64,7 @@ class ORBITDataset(Dataset):
         self.clip_cap = 10 # limit number of clips sampled from any one video
         self.frame_cap = 1000 # limit number of frames in any one video
         self.original_frame_size = 1080
-        self.normalize_stats = {'mean' : [0.500, 0.436, 0.396], 'std' : [0.145, 0.143, 0.138]} # orbit mean train frame
+        self.normalize_stats = {'mean' : [0.485, 0.456, 0.406], 'std' : [0.229, 0.224, 0.225]} # imagenet mean train frame
 
         # Setup empty collections.
         self.user2objs = {}     # Dictionary of user (str): list of object ids (int)
