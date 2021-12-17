@@ -127,7 +127,7 @@ def verify_args(learner, args):
     cend = "\33[0m"
     
     if args.test_tasks_per_user > 1:
-        print('{:}warning: --test_tasks_per_user > 1 which makes multiple (test_tasks_per_user) predictions per target frame. Only the last prediction is being saved to JSON{:}'.format(cyellow, cend))
+        print('{:}warning: --test_tasks_per_user > 1 means multiple predictions are made per target frame. Only the last prediction is saved to JSON{:}'.format(cyellow, cend))
     
     if len(args.frame_annotations) and args.no_preload_clips:
         sys.exit('{:}error: loading annotations with --frame_annotations is currently not supported with --no_preload_clips{:}'.format(cred, cend))
