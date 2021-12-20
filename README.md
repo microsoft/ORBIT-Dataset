@@ -144,9 +144,18 @@ python3 maml-learner.py --data_path folder/to/save/dataset/orbit_benchmark_84 --
                         --train_object_cap 10 --with_train_shot_caps \
                         --learning_rate 0.00001 --inner_learning_rate 0.001 --num_grad_steps 15
 ```
-Note, unlike CNAPs/ProtoNets, it may be possible to train/test on a GPU with less memory by reducing `--batch_size` (or by splitting across two smaller GPUs using `--use_two_gpus` and reducing `--batch_size`)
+Note, unlike CNAPs/ProtoNets, it may be possible to train/test on a GPU with less memory by reducing `--batch_size` (or by splitting across two smaller GPUs using `--use_two_gpus` and reducing `--batch_size`).
 
-**MAML + LITE** is not implemented.
+**MAML on large images** (see [Table 1](https://arxiv.org/pdf/2107.01105.pdf)) is run with 224x224 frames and an EfficientNet-B0 feature extractor. It is trained/tested on 1x Titan RTX 24GB GPU with no training caps on the number of objects/videos per task:
+```
+python3 maml-learner.py --data_path folder/to/save/dataset/orbit_benchmark_224 --frame_size 224 \
+                        --feature_extractor efficientnetb0 --pretrained_extractor_path features/pretrained/efficientnetb0_imagenet_224.pth \
+                        --classifier linear --learn_extractor \
+                        --context_video_type clean --target_video_type clutter \
+                        --learning_rate 0.00001 --inner_learning_rate 0.001 --num_grad_steps 15 \
+                        --batch_size 16
+```
+Note, it is possible to test on a GPU with less memory by reducing `--batch_size`. 
 
 ## FineTuner
 
@@ -205,8 +214,8 @@ The following checkpoints have been trained on the ORBIT benchmark dataset using
 |           |     224    |  ResNet-18  |         Y          |[`orbit_cleve_protonets_resnet18_224_lite.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cleve_protonets_resnet18_224_lite.pth)|[`orbit_cluve_protonets_resnet18_224_lite.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cluve_protonets_resnet18_224_lite.pth)|
 |           |     224    |  EfficientNet-B0  |         Y          |[`orbit_cleve_protonets_efficientnetb0_224_lite.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cleve_protonets_efficientnetb0_224_lite.pth)|[`orbit_cluve_protonets_efficientnetb0_224_lite.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cluve_protonets_efficientnetb0_224_lite.pth)|
 |    MAML   |     84     |     ResNet-18     |         N          |[`orbit_cleve_maml_resnet18_84.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cleve_maml_resnet18_84.pth)|[`orbit_cluve_maml_resnet18_84.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cluve_maml_resnet18_84.pth)|
-|           |     224    |  ResNet-18 |         Y          |Not implemented |Not implemented |
-|           |     224    |  EfficientNet-B0  |         Y          |Not implemented |Not implemented |
+|           |     224    |  ResNet-18 |         Y          | [`orbit_cleve_maml_resnet18_224.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cleve_maml_resnet18_224.pth)|[`orbit_cluve_maml_resnet18_224.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cluve_maml_resnet18_224.pth)|
+|           |     224    |  EfficientNet-B0  |         Y          | [`orbit_cleve_maml_efficientnetb0_224.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cleve_maml_efficientnetb0_224.pth)|[`orbit_cluve_maml_efficientnetb0_224.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cluve_maml_efficientnetb0_224.pth)|
 | FineTuner |     84     |     ResNet-18     |         N          |[`orbit_cleve_finetuner_resnet18_84.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cleve_finetuner_resnet18_84.pth)|[`orbit_cluve_finetuner_resnet18_84.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cluve_finetuner_resnet18_84.pth)|
 
 # Annotations for ORBIT clutter videos
