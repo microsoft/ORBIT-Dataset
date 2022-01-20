@@ -218,16 +218,28 @@ The following checkpoints have been trained on the ORBIT benchmark dataset using
 |           |     224    |  EfficientNet-B0  |         Y          | [`orbit_cleve_maml_efficientnetb0_224.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cleve_maml_efficientnetb0_224.pth)|[`orbit_cluve_maml_efficientnetb0_224.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cluve_maml_efficientnetb0_224.pth)|
 | FineTuner |     84     |     ResNet-18     |         N          |[`orbit_cleve_finetuner_resnet18_84.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cleve_finetuner_resnet18_84.pth)|[`orbit_cluve_finetuner_resnet18_84.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cluve_finetuner_resnet18_84.pth)|
 
+# ORBIT Few-Shot Object Recognition Challenge
+
+Microsoft is hosting the ORBIT Few-Shot Object Recognition Challenge in partnership with the [VizWiz workshop](https://vizwiz.org/workshops/2022-workshop/) at [CVPR 2022](https://cvpr2022.thecvf.com). The Challenge will run from Monday 7 Feburary 2022 9am CT to Friday 6 May 2022 9am CT. 
+
+To participate, visit the [Challenge evaluation server](https://eval.ai/web/challenges/challenge-page/1438/overview) which is hosted on EvalAI. Here you will find all details about the Challenge, including the competition rules and how to register your team. 
+
+We have provided [orbit_challenge_getting_started.ipynb](https://github.com/microsoft/ORBIT-Dataset/raw/master/orbit_challenge_getting_started.ipynb) to help get you started. This starter task will step you through how to load the ORBIT validation set, run it through a pre-trained model, and save the results which you can then upload to the evaluation server.
+
+The top 2 teams will be awarded cash prizes of 2,500 USD each, and be invited to give talks at the VizWiz workshop 2022 and Microsoft Research Cambridge UK. Note, to be eligible for prizes, teams must either open-source their code on GitHub, or provide `@orbit-challenge` access to their privte repository. Microsoft also has up to 20,000 USD in Azure credits to share with participating teams.
+
+Please see the [Challenge evaluation server](https://eval.ai/web/challenges/challenge-page/1438) for all other details. For any questions, please email orbit-challenge@microsoft.com. 
+
 # Annotations for ORBIT clutter videos
 
 The bounding boxes for all clutter video frames in the ORBIT benchmark dataset are available in [`data/orbit_clutter_bounding_boxes.zip`](https://github.com/microsoft/ORBIT-Dataset/raw/master/data/orbit_clutter_bounding_boxes.zip). Note, there is _one_ bounding box per frame (i.e. the location of the labelled/target object). Other details:
 * The annotations are saved in train/validation/test folders, following the benchmark splits.
-* In each folder, there is a JSON per video (e.g. `P177--bag--clutter--Zj_1HvmNWejSbmYf_m4YzxHhSUUl-ckBtQ-GSThX_4E.json`).
+* In each folder, there is one JSON per video (e.g. `P177--bag--clutter--Zj_1HvmNWejSbmYf_m4YzxHhSUUl-ckBtQ-GSThX_4E.json`).
 * Each JSON contains keys that correspond to all frames in that video.
-* For each frame, annotations are saved in the format `{"P177--bag--clutter--Zj_1HvmNWejSbmYf_m4YzxHhSUUl-ckBtQ-GSThX_4E-00001.jpg": {"object_bounding_box": {"x": int, "y": int, "w": int, "h": int}, "object_present": true}, ...}` where `(0,0)` is the top left corner. The coordinates are given for the original 1080x1080 frames, thus `x` and `y` range from `[0,1079]`, and `width` and `height` from `[1,1080]`.
-* When there is no object in the frame, the annotations are given as `{"object_bounding_box": null, "object_present": false}`.
+* For each frame, annotations are saved in the format `{"P177--bag--clutter--Zj_1HvmNWejSbmYf_m4YzxHhSUUl-ckBtQ-GSThX_4E-00001.jpg": {"object_bounding_box": {"x": int, "y": int, "w": int, "h": int}, "object_present": true}, ...}` where `(0,0)` is the top left corner of the bounding box. The coordinates are given for the original 1080x1080 frames, thus `x` and `y` range from `[0,1079]`, and `width` and `height` from `[1,1080]`.
+* When the target object is not in the frame, the annotations are given as `{"object_bounding_box": null, "object_present": false}`.
 
-You can use the `--frame_annotations` argument to load these annotations. The argument can take the values `object_bounding_box`, `object_present`, or both. This will load the specified annotations (for clutter frames only) and return them in a dictionary. At present, the code does not use these annotations for training/testing. To do so, you will need to return them in the `unpack_task` function in `utils/data.py`.
+You can use `--frame_annotations` to load these annotations. The argument can take the values `object_bounding_box`, `object_present`, or both. This will load the specified annotations (for clutter frames only) and return them in a dictionary. At present, the code does not use these annotations for training/testing. To do so, you will need to return them in the `unpack_task` function in `utils/data.py`.
 
 # Download unfiltered ORBIT dataset
 
