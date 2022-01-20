@@ -224,7 +224,7 @@ Microsoft is hosting the ORBIT Few-Shot Object Recognition Challenge in partners
 
 To participate, visit the [Challenge evaluation server](https://eval.ai/web/challenges/challenge-page/1438/overview) which is hosted on EvalAI. Here you will find all details about the Challenge, including the competition rules and how to register your team. 
 
-We have provided [orbit_challenge_getting_started.ipynb](https://github.com/microsoft/ORBIT-Dataset/raw/master/orbit_challenge_getting_started.ipynb) to help get you started. This starter task will step you through how to load the ORBIT validation set, run it through a pre-trained model, and save the results which you can then upload to the evaluation server.
+We have provided [orbit_challenge_getting_started.ipynb](https://github.com/microsoft/ORBIT-Dataset/blob/master/orbit_challenge_getting_started.ipynb) to help get you started. This starter task will step you through how to load the ORBIT validation set, run it through a pre-trained model, and save the results which you can then upload to the evaluation server.
 
 The top 2 teams will be awarded cash prizes of 2,500 USD each, and be invited to give talks at the VizWiz workshop 2022 and Microsoft Research Cambridge UK. Note, to be eligible for prizes, teams must either open-source their code on GitHub, or provide `@orbit-challenge` access to their privte repository. Microsoft also has up to 20,000 USD in Azure credits to share with participating teams.
 
