@@ -431,7 +431,7 @@ class ORBITDataset(Dataset):
                 map_dict[old_label] = new_labels[i]
             return map_dict
 
-    def sample_task(self, task_objects, with_target_set):
+    def sample_task(self, task_objects, with_target_set, user_id=''):
 
         # select way (number of classes/objects) randomly
         num_objects = len(task_objects)
@@ -488,7 +488,8 @@ class ORBITDataset(Dataset):
             'target_labels': target_labels,                                     # If train, tensor of shape (num_target_clips,), dtype int64. If test/validation, list of length (num_target_videos_for_user) of tensors, each of shape (1,), dtype int64
             'target_annotations': target_annotations,                           # Dictionary. Empty if no annotations present. TODO: Add info for when annotations are present.
             # Extra information, to be used in logging and results.
-            'object_list': obj_list                                             # Ordered list of strings for all objects in this task.
+            'object_list': obj_list,                                             # Ordered list of strings for all objects in this task.
+            'user_id': user_id                                                  # User ID ('' if ObjectEpisodicORBITDataset as task sampled from > 1 user), dtype string
         }
         return task_dict
 
@@ -528,7 +529,7 @@ class UserEpisodicORBITDataset(ORBITDataset):
         task_id, with_target_set = index
         user = self.users[task_id] # get user (each task == user id)
         user_objects = self.user2objs[user] # get user's objects
-        return self.sample_task(user_objects, with_target_set)
+        return self.sample_task(user_objects, with_target_set, user)
 
 class ObjectEpisodicORBITDataset(ORBITDataset):
     """
