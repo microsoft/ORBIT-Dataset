@@ -24,7 +24,7 @@ class OpsCounter():
                 classifier_params += param.numel()
 
         feature_adapter_params, set_encoder_params = 0, 0
-        if base_model.args.adapt_features:
+        if base_model.adapt_features:
             # feature adapter params
             for param in base_model.feature_adapter.parameters():
                 feature_adapter_params += param.numel()
