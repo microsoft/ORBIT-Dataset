@@ -233,13 +233,13 @@ Please see the [Challenge evaluation server](https://eval.ai/web/challenges/chal
 # Annotations for ORBIT clutter videos
 
 The bounding boxes for all clutter video frames in the ORBIT benchmark dataset are available in [`data/orbit_clutter_bounding_boxes.zip`](https://github.com/microsoft/ORBIT-Dataset/raw/master/data/orbit_clutter_bounding_boxes.zip). Note, there is _one_ bounding box per frame (i.e. the location of the labelled/target object). Other details:
-* The annotations are saved in train/validation/test folders, following the benchmark splits.
+* The annotations are saved in train/validation/test folders, following the benchmark splits. These should be saved in an annotations folder in the root dataset directory (e.g. path/to/orbit_benchmark_224/annotations/{train,validation,test}).
 * In each folder, there is one JSON per video (e.g. `P177--bag--clutter--Zj_1HvmNWejSbmYf_m4YzxHhSUUl-ckBtQ-GSThX_4E.json`).
 * Each JSON contains keys that correspond to all frames in that video.
-* For each frame, annotations are saved in the format `{"P177--bag--clutter--Zj_1HvmNWejSbmYf_m4YzxHhSUUl-ckBtQ-GSThX_4E-00001.jpg": {"object_bounding_box": {"x": int, "y": int, "w": int, "h": int}, "object_present": true}, ...}` where `(0,0)` is the top left corner of the bounding box. The coordinates are given for the original 1080x1080 frames, thus `x` and `y` range from `[0,1079]`, and `width` and `height` from `[1,1080]`.
-* When the target object is not in the frame, the annotations are given as `{"object_bounding_box": null, "object_present": false}`.
+* For each frame, annotations are saved in the format `{"P177--bag--clutter--Zj_1HvmNWejSbmYf_m4YzxHhSUUl-ckBtQ-GSThX_4E-00001.jpg": {"object_bounding_box": {"x": int, "y": int, "w": int, "h": int}, "object_not_present": false}, ...}` where `(0,0)` is the top left corner of the bounding box. The coordinates are given for the original 1080x1080 frames, thus `x` and `y` range from `[0,1079]`, and `width` and `height` from `[1,1080]`.
+* When the target object is not in the frame, the annotations are given as `{"object_bounding_box": null, "object_not_present": true}`.
 
-You can use `--frame_annotations` to load these annotations. The argument can take the values `object_bounding_box`, `object_present`, or both. This will load the specified annotations (for clutter frames only) and return them in a dictionary. At present, the code does not use these annotations for training/testing. To do so, you will need to return them in the `unpack_task` function in `utils/data.py`.
+You can use `--frame_annotations` to load these annotations. The argument can take the values `object_bounding_box`, `object_not_present`, or both. This will load the specified annotations (for clutter frames only) and return them in a dictionary. At present, the code does not use these annotations for training/testing. To do so, you will need to return them in the `unpack_task` function in `utils/data.py`.
 
 # Download unfiltered ORBIT dataset
 
