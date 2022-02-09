@@ -75,7 +75,7 @@ def parse_args(learner='default'):
                         help="Do not preload clips per task from disk. Use if CPU memory is limited, but will mean slower training/testing.")
     parser.add_argument("--frame_size", type=int, default=224, choices=[84, 224],
                         help="Frame size (default: 224).")
-    parser.add_argument("--frame_annotations", nargs='+', type=str, default=[], choices=["object_present", "object_bounding_box"],
+    parser.add_argument("--frame_annotations", nargs='+', type=str, default=[], choices=["object_not_present", "object_bounding_box"],
                         help="Annotations to load per frame (default: None).")
     parser.add_argument("--train_task_type", type=str, default="user_centric", choices=["user_centric", "object_centric"],
                         help="Sample train tasks as user-centric or object-centric.")
