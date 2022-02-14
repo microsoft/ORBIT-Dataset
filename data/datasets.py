@@ -6,6 +6,7 @@ import torch
 import random
 import numpy as np
 from PIL import Image
+from tqdm import tqdm
 from pathlib import Path
 from typing import Dict, List, Union
 from torch.utils.data import Dataset
@@ -67,6 +68,7 @@ class ORBITDataset(Dataset):
         self.normalize_stats = {'mean' : [0.485, 0.456, 0.406], 'std' : [0.229, 0.224, 0.225]} # imagenet mean train frame
 
         # Setup empty collections.
+        self.users = []         # List of users (str)
         self.user2objs = {}     # Dictionary of user (str): list of object ids (int)
         self.obj2name = []      # List of object id (int) to object label (str)
         self.obj2vids = []      # List of dictionaries: {"clean": list of video paths (str), "clutter": list of video paths (str)}
@@ -76,13 +78,13 @@ class ORBITDataset(Dataset):
         if self.with_cluster_labels:
             self.obj2cluster = []   # List of object id (int) to cluster id (int)
 
-        self.__load_all_users()
+        self.__load_all_users()        
+        print(f"Loaded data summary: {self.num_users} users, {len(self.obj2name)} objects, {len(self.video2id)} videos")
 
     def __load_all_users(self) -> None:
-        # Setup cluster information if we're using clusters as labels.
-        if self.with_cluster_labels:
+        if self.with_cluster_labels: # setup clusters if we're using object clusters as labels.
             # Load cluster labels for this folder.
-            cluster_label_path = Path(Path(__file__).parent, f"orbit_{self.root.name}_object_cluster_labels.json")
+            cluster_label_path = Path('data', f"orbit_{self.root.name}_object_cluster_labels.json")
             with open(cluster_label_path, 'r') as cluster_label_file:
             # This dictionary shows what cluster each video in the given root belongs to.
                 vid2cluster = json.load(cluster_label_file)
@@ -92,79 +94,66 @@ class ORBITDataset(Dataset):
             cluster_classes = sorted(set(vid2cluster.values()))
 
             # We want a list where each object id corresponds to a specific cluster label
-            cluster_id_map = self.get_label_map(cluster_classes)
-
-        video_dir_paths = sorted([child for child in self.root.glob("*/*/*/*") if child.is_dir()])
-        for video_id, video_path in enumerate(video_dir_paths):
-            split_path = video_path.relative_to(self.root).parts
-            assert len(split_path) == 4, f"Expected path to have 4 parts, but was {split_path}"
-            user, object_name, video_type, video_id_str = split_path
+            cluster_id_map = self.get_label_map(cluster_classes) #TODO potentially might be an issue with filtering
             
-            if self.with_annotations and video_type == 'clutter':
-                annotations = self.__load_video_annotations(video_id_str)
-                # TODO: load all annotations, but then only store some for frame_anns.
-                self.frame2anns.update(annotations)
-
-            if user not in self.user2objs:
-                self.user2objs[user] = []
-                # This object must also be new.
-                new_object = True
-            else:
-                new_object = True
-                for object_id in self.user2objs[user]:
-                    known_object_name = self.obj2name[object_id]
-                    if object_name == known_object_name:
-                        new_object = False
-                        # object_id will be set as the iteration variable.
-                        break
-
-            if new_object:
-                # We have a object that hasn't been seen before.
-                # Create a new id and add to the right collections
-                object_id = len(self.obj2name)
-                self.obj2name.append(object_name)
-
-                self.obj2vids.append({"clean": [], "clutter": []})
-                self.user2objs[user].append(object_id)
-
+        obj_id, vid_id = 0, 0
+        video_types = ['clean', 'clutter']
+        for user_path in tqdm(sorted(self.root.iterdir()), desc=f"Loading users from {self.root}"): # loop over users
+            user = user_path.name
+            self.users.append(user)
+            obj_ids = []
+            for obj_path in sorted(user_path.iterdir()): # loop over objects per user
+                obj_name = obj_path.name
+                videos_by_type = {}
+                for video_type in video_types: # loop over video types per object [clean and clutter]
+                    video_type_path = Path(obj_path, video_type)
+                    videos_by_type[video_type] = []
+                    for video_path in sorted(video_type_path.iterdir()): # loop over videos per video type
+                        video_name = video_path.name
+                        videos_by_type[video_type].append(video_path)
+                        self.video2id[video_path] = vid_id
+                        vid_id += 1 
+                        if self.with_annotations and video_type == 'clutter':
+                            video_annotations = self.__load_video_annotations(video_name)
+                            self.frame2anns.update(video_annotations)
+               
+                obj_ids.append(obj_id)
+                self.obj2vids.append(videos_by_type)
+                self.obj2name.append(obj_name)
+                obj_id += 1
                 if self.with_cluster_labels:
-                    video_cluster = vid2cluster[video_id_str]
-                    cluster_id = cluster_id_map[video_cluster]
-                    self.obj2cluster.append(cluster_id)
+                    video_name = videos_by_type['clean'][-1] # all videos will have same object label, so just pick 1
+                    obj_cluster = cluster_id_map [ vid2cluster[video_name] ]
+                    self.obj2cluster.append(obj_cluster)
 
-            self.obj2vids[object_id][video_type].append(video_path)
-
-            # Create a link between the path to the video and the id for this video.
-            self.video2id[video_path] = video_id
-
-        # We want a sorted list of unique users.
-        self.users = sorted(self.user2objs.keys())
+            self.user2objs[user] = obj_ids
+        
         self.num_users = len(self.users)
     
-    def __load_video_annotations(self, video_id_str: str) -> Dict[str, Dict[str, Union[bool, torch.Tensor]]]:
-        annotation_path = Path(self.annotation_root, f"{video_id_str}.json")
+    def __load_video_annotations(self, video_name: str) -> Dict[str, Dict[str, Union[bool, torch.Tensor]]]:
+        annotation_path = Path(self.annotation_root, f"{video_name}.json")
         with open(annotation_path, 'r') as annotation_file:
-            annotations = json.load(annotation_file)
+            video_annotations = json.load(annotation_file)
 
-        _, _, video_type, _ = video_id_str.split("--", maxsplit=3)      # maxsplit is needed as some video ids contain --
-        assert video_type in ["clean", "clutter"], f"Invalid video type {video_type}. Should be clean or clutter."
-
-        for frame_id, annotation_dict in annotations.items():
-            for annotation in self.frame_annotations: # only load annotations specified in frame_annotaitons
-                if annotation in annotation_dict and annotation_dict[annotation] is not None:
-                    if annotation == 'object_bounding_box':
-                        bbox = annotation_dict[annotation]
-                        bbox = torch.tensor([bbox["x"], bbox["y"], bbox["w"], bbox["h"]])
-                        # Resize to fit current frame size.
-                        bbox = ((bbox / self.original_frame_size) * self.frame_size).int()
-                        # Clamp box to fit within frame.
-                        bbox[0:2] = torch.clamp(bbox[0:2], 0, self.frame_size - 1)
-                        bbox[2:4] = torch.clamp(bbox[2:4], 1, self.frame_size)
-                        annotations[frame_id][annotation] = bbox
-                    elif annotation == 'object_present':
-                        annotations[frame_id][annotation] = torch.tensor(annotation_dict[annotation]).int()
+        if 'object_bounding_box' in self.frame_annotations:
+            video_annotations = self.__preprocess_bounding_boxes(video_annotations)
         
-        return annotations
+        return video_annotations
+    
+    def __preprocess_bounding_boxes(self, video_annotations: Dict[str, Dict[str, Union[bool, torch.Tensor]]]) -> Dict[str, Dict[str, Union[bool, torch.Tensor]]]:
+
+        for frame_id, annotation_dict in video_annotations.items():
+            if "object_bounding_box" in annotation_dict and annotation_dict["object_bounding_box"] is not None:
+                bbox = annotation_dict["object_bounding_box"]
+                bbox = torch.tensor([bbox["x"], bbox["y"], bbox["w"], bbox["h"]])
+                # Resize to fit current frame size.
+                bbox = ((bbox / self.original_frame_size) * self.frame_size).int()
+                # Clamp box to fit within frame.
+                bbox[0:2] = torch.clamp(bbox[0:2], 0, self.frame_size - 1)
+                bbox[2:4] = torch.clamp(bbox[2:4], 1, self.frame_size)
+                video_annotations[frame_id]["object_bounding_box"] = bbox
+
+        return video_annotations
 
     def __len__(self):
         return self.num_users
@@ -303,6 +292,8 @@ class ORBITDataset(Dataset):
                     if frame_name in self.frame2anns and self.frame2anns[frame_name][annotation] is not None:
                         frame_anns = self.frame2anns[frame_name]
                         loaded_annotations[annotation][clip_idx, frame_idx] = frame_anns[annotation]
+                    else:
+                        loaded_annotations[annotation][clip_idx, frame_idx] = float('nan')
 
         return loaded_annotations
 
