@@ -546,7 +546,7 @@ class ObjectEpisodicORBITDataset(ORBITDataset):
         :param with_caps: (bool) If True, impose caps on the number of videos per object, otherwise leave uncapped.
         :return: Nothing.
         """
-        ORBITDataset.__init__(self, root, way_method, object_cap, subsample_factor, clip_length, preload_clips, frame_size, frame_annotations, test_mode, with_cluster_labels, with_caps)
+        ORBITDataset.__init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, num_clips, clip_length, preload_clips, frame_size, frame_annotations, test_mode, with_cluster_labels, with_caps)
 
     def __getitem__(self, index):
         """
