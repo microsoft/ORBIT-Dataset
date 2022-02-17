@@ -83,8 +83,10 @@ def attach_frame_history_paths(frame_paths, history_length):
         frame_paths.append( np.roll(frame_paths[0], shift=-l, axis=0) )
     frame_paths_with_history = np.stack(frame_paths, axis=1) # of size num_clips x history_length
     
-    # since frame_paths_with_history have wrapped around, remove last (history_length - 1) frames
-    return frame_paths_with_history[:-(history_length-1)]
+    if history_length > 1:
+        return frames_with_history[:-(history_length-1)] # frames have wrapped around, remove last (history_length - 1) frames
+    else:
+        return frames_with_history
 
 def attach_frame_history_tensor(frames, history_length):
     """
@@ -103,8 +105,10 @@ def attach_frame_history_tensor(frames, history_length):
         frames.append( frames[0].roll(shifts=-l, dims=0) )
     frames_with_history = torch.stack(frames, dim=1) # of size num_clips x history_length
     
-    # since frames has wrapped around, remove last (history_length - 1) frames
-    return frames_with_history[:-(history_length-1)]
+    if history_length > 1:
+        return frames_with_history[:-(history_length-1)] # frames have wrapped around, remove last (history_length - 1) frames
+    else:
+        return frames_with_history
 
 def unpack_task(task_dict, device, context_to_device=True, target_to_device=False, preload_clips=False):
    
