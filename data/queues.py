@@ -29,23 +29,15 @@ class DatasetQueue:
             self.num_workers = override_num_workers
 
         self.num_users = None
-        self.collate_fn = self.squeeze
+        self.collate_fn = self.unpack
 
-    def squeeze(self, batch):
+    def unpack(self, batch):
         #assumes batch_size = 1
         assert len(batch) == 1, "DataLoader needs a batch size of 1!"
-        squeezed_batch = {}
+        unpacked_batch = {}
         for k,v in batch[0].items():
-            if isinstance(v, torch.Tensor):
-                # We have a single tensor. Remove any axes of dimension 1.
-                squeezed_batch[k] = v.squeeze(0)
-            elif isinstance(v, list) and all(isinstance(b, torch.Tensor) for b in v):
-                # If we have a list of tensors, return a list of squeezed tensors.
-                squeezed_batch[k] = [b.squeeze(0) for b in v]
-            else:
-                # Just use the value
-                squeezed_batch[k] = v
-        return squeezed_batch
+            unpacked_batch[k] = v
+        return unpacked_batch
 
     def get_num_users(self):
         return self.num_users
