@@ -16,7 +16,7 @@ class ORBITDataset(Dataset):
     """
     Base class for ORBIT dataset.
     """
-    def __init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, num_clips, clip_length, preload_clips, frame_size, frame_annotations, test_mode, with_cluster_labels, with_caps):
+    def __init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, num_clips, clip_length, preload_clips, frame_size, annotations_to_load, test_mode, with_cluster_labels, with_caps):
         """
         Creates instance of ORBITDataset.
         :param root: (str) Path to train/validation/test folder in ORBIT dataset root folder.
@@ -30,13 +30,14 @@ class ORBITDataset(Dataset):
         :param clip_length: (int) Number of contiguous frames per video clip.
         :param preload_clips: (bool) If True, preload clips from disk and return as tensors, otherwise return clip paths.
         :param frame_size: (int) Size in pixels of preloaded frames.
-        :param frame_annotations: (list::str) Types of frame annotations to load from disk.
+        :param annotations_to_load: (list::str) Types of frame annotations to load from disk and return per task.
         :param test_mode: (bool) If True, returns task with target set grouped by video, otherwise returns task with target set not grouped by video.
         :param with_cluster_labels: (bool) If True, use object cluster labels, otherwise use raw object labels.
         :param with_caps: (bool) If True, impose caps on the number of videos per object, otherwise leave uncapped.
         :return: Nothing.
         """
         self.root = root
+        self.mode = os.path.basename(self.root)
         self.way_method = way_method
         self.shot_method_context, self.shot_method_target = shot_methods
         self.shot_context, self.shot_target = shots
@@ -49,12 +50,12 @@ class ORBITDataset(Dataset):
         self.test_mode = test_mode
         self.with_cluster_labels = with_cluster_labels
         self.with_caps = with_caps
-        self.with_annotations = True if frame_annotations else False
-        self.frame_annotations = sorted(frame_annotations)
+        self.annotations_to_load = sorted(annotations_to_load)
+        self.with_annotations = True if annotations_to_load else False
         
         if self.with_annotations:
             self.annotation_dims = {'object_bounding_box': 4 }
-            self.annotation_root = os.path.join(os.path.dirname(self.root),  "annotations", f"{os.path.basename(self.root)}")       # e.g. /data/orbit_benchmark/annotations/{train,validation,test}
+            self.annotation_root = os.path.join(os.path.dirname(self.root),  "annotations", f"{self.mode}")       # e.g. /data/orbit_benchmark/annotations/{train,validation,test}
             if not os.path.isdir(self.annotation_root):
                 raise IOError(f"Annotation directory {self.annotation_root} does not exist.")
 
@@ -79,11 +80,12 @@ class ORBITDataset(Dataset):
             self.obj2cluster = []   # List of object id (int) to cluster id (int)
 
         self.__load_all_users()        
-
+    
     def __load_all_users(self) -> None:
+        
         if self.with_cluster_labels: # setup clusters if we're using object clusters as labels.
             # Load cluster labels for this folder.
-            cluster_label_path = os.path.join('data', f"orbit_{os.path.basename(self.root)}_object_cluster_labels.json")
+            cluster_label_path = os.path.join('data', f"orbit_{self.mode}_object_cluster_labels.json")
             with open(cluster_label_path, 'r') as cluster_label_file:
             # This dictionary shows what cluster each video in the given root belongs to.
                 vid2cluster = json.load(cluster_label_file)
@@ -97,7 +99,7 @@ class ORBITDataset(Dataset):
             
         obj_id, vid_id = 0, 0
         video_types = ['clean', 'clutter']
-        for user in tqdm(sorted(os.listdir(self.root)), desc=f"Loading users from {self.root}"): # loop over users
+        for user in tqdm(sorted(os.listdir(self.root)), desc=f"Loading {self.mode} users from {self.root}"): # loop over users
             user_path = os.path.join(self.root, user)
             self.users.append(user)
             obj_ids = []
@@ -113,7 +115,7 @@ class ORBITDataset(Dataset):
                         videos_by_type[video_type].append(video_path)
                         self.vid2frames[video_path] = [os.path.join(video_path, f) for f in sorted(os.listdir(video_path))]
                         vid_id += 1 
-                        if self.with_annotations and video_type == 'clutter':
+                        if self.with_annotations:
                             video_annotations = self.__load_video_annotations(video_name)
                             self.frame2anns.update(video_annotations)
                
@@ -137,7 +139,7 @@ class ORBITDataset(Dataset):
         with open(annotation_path, 'r') as annotation_file:
             video_annotations = json.load(annotation_file)
 
-        if 'object_bounding_box' in self.frame_annotations:
+        if 'object_bounding_box' in self.annotations_to_load:
             video_annotations = self.__preprocess_bounding_boxes(video_annotations)
         
         return video_annotations
@@ -227,7 +229,7 @@ class ORBITDataset(Dataset):
         :return: (list::torch.Tensor, list::np.ndarray, list::torch.Tensor, list::int) Frame data, paths, and annotations organised in clips of self.clip_length contiguous frames, and video ID for each sampled clip.
         """
         clips, paths, video_ids = [], [], []
-        annotations = { ann: [] for ann in self.frame_annotations }
+        annotations = { ann: [] for ann in self.annotations_to_load }
         for video_path in video_paths:
             sampled_paths = self.sample_clips_from_a_video(video_path, num_clips)
             paths.extend(sampled_paths)
@@ -284,14 +286,14 @@ class ORBITDataset(Dataset):
 
         loaded_annotations = {
             annotation : torch.empty(num_clips, clip_length, self.annotation_dims.get(annotation, 1))     # The dimension defaults to 1 unless specified.
-            for annotation in self.frame_annotations }
+            for annotation in self.annotations_to_load }
 
         for clip_idx in range(num_clips):
             for frame_idx in range(clip_length):
                 frame_path = paths[clip_idx, frame_idx]
-                frame_name = frame_path.name
-                for annotation in self.frame_annotations:
-                    if frame_name in self.frame2anns and self.frame2anns[frame_name][annotation] is not None:
+                frame_name = os.path.basename(frame_path)
+                for annotation in self.annotations_to_load:
+                    if annotation in self.frame2anns[frame_name] and self.frame2anns[frame_name][annotation] is not None:
                         frame_anns = self.frame2anns[frame_name]
                         loaded_annotations[annotation][clip_idx, frame_idx] = frame_anns[annotation]
                     else:
@@ -363,7 +365,7 @@ class ORBITDataset(Dataset):
         clips = torch.stack(clips) if self.preload_clips else torch.tensor(clips)
         paths = np.array(paths)
         labels = torch.tensor(labels)
-        annotations = { ann: torch.stack(annotations[ann]) for ann in self.frame_annotations }
+        annotations = { ann: torch.stack(annotations[ann]) for ann in self.annotations_to_load }
 
         if test_mode: # group by video
             frames_by_video, paths_by_video, labels_by_video, annotations_by_video = [], [], [], []
@@ -380,7 +382,7 @@ class ORBITDataset(Dataset):
                 video_label = labels[idxs][0]
                 labels_by_video.append(video_label)
                 # get all frame annotations for current video
-                video_anns = { ann : annotations[ann][idxs].flatten(end_dim=1) for ann in self.frame_annotations } if self.with_annotations else None 
+                video_anns = { ann : annotations[ann][idxs].flatten(end_dim=1) for ann in self.annotations_to_load } if self.with_annotations else None 
                 annotations_by_video.append(video_anns)
             return frames_by_video, paths_by_video, labels_by_video, annotations_by_video
         else:
@@ -399,12 +401,12 @@ class ORBITDataset(Dataset):
         random.shuffle(idxs)
         if self.preload_clips:
             if self.with_annotations:
-                return clips[idxs], paths[idxs], labels[idxs], { ann : annotations[ann][idxs] for ann in self.frame_annotations }
+                return clips[idxs], paths[idxs], labels[idxs], { ann : annotations[ann][idxs] for ann in self.annotations_to_load }
             else:
                 return clips[idxs], paths[idxs], labels[idxs], annotations
         else:
             if self.with_annotations:
-                return clips, paths[idxs], labels[idxs], { ann : annotations[ann][idxs] for ann in self.frame_annotations }
+                return clips, paths[idxs], labels[idxs], { ann : annotations[ann][idxs] for ann in self.annotations_to_load }
             else:
                 return clips, paths[idxs], labels[idxs], annotations
 
@@ -443,8 +445,8 @@ class ORBITDataset(Dataset):
         context_paths, target_paths = [], []
         context_labels, target_labels = [], []
         context_video_ids, target_video_ids = [], []
-        context_annotations = { ann : [] for ann in self.frame_annotations}
-        target_annotations = { ann : [] for ann in self.frame_annotations}
+        context_annotations = { ann : [] for ann in self.annotations_to_load}
+        target_annotations = { ann : [] for ann in self.annotations_to_load}
         for obj in selected_objects:
             label = label_map[obj]
             obj_name = self.obj2name[obj]
@@ -490,7 +492,7 @@ class UserEpisodicORBITDataset(ORBITDataset):
     """
     Class for user-centric episodic sampling of ORBIT dataset.
     """
-    def __init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, num_clips, clip_length, preload_clips, frame_size, frame_annotations, test_mode, with_cluster_labels, with_caps):
+    def __init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, num_clips, clip_length, preload_clips, frame_size, annotations_to_load, test_mode, with_cluster_labels, with_caps):
         """
         Creates instance of UserEpisodicORBITDataset.
         :param root: (str) Path to train/validation/test folder in ORBIT dataset root folder.
@@ -504,13 +506,13 @@ class UserEpisodicORBITDataset(ORBITDataset):
         :param clip_length: (int) Number of contiguous frames per video clip.
         :param preload_clips: (bool) If True, preload clips from disk and return as tensors, otherwise return clip paths.
         :param frame_size: (int) Size in pixels of preloaded frames.
-        :param frame_annotations: (list::str) Types of frame annotations to load from disk.
+        :param annotations_to_load: (list::str) Types of frame annotations to load from disk and return per task.
         :param test_mode: (bool) If True, returns task with target set grouped by video, otherwise returns task with target set not grouped by video.
         :param with_cluster_labels: (bool) If True, use object cluster labels, otherwise use raw object labels.
         :param with_caps: (bool) If True, impose caps on the number of videos per object, otherwise leave uncapped.
         :return: Nothing.
         """
-        ORBITDataset.__init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, num_clips, clip_length, preload_clips, frame_size, frame_annotations, test_mode, with_cluster_labels, with_caps)
+        ORBITDataset.__init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, num_clips, clip_length, preload_clips, frame_size, annotations_to_load, test_mode, with_cluster_labels, with_caps)
 
     def __getitem__(self, index):
         """
@@ -528,7 +530,7 @@ class ObjectEpisodicORBITDataset(ORBITDataset):
     """
     Class for object-centric episodic sampling of ORBIT dataset.
     """
-    def __init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, num_clips, clip_length, preload_clips, frame_size, frame_annotations, test_mode, with_cluster_labels, with_caps):
+    def __init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, num_clips, clip_length, preload_clips, frame_size, annotations_to_load, test_mode, with_cluster_labels, with_caps):
         """
         Creates instance of ObjectEpisodicORBITDataset.
         :param root: (str) Path to train/validation/test folder in ORBIT dataset root folder.
@@ -542,13 +544,13 @@ class ObjectEpisodicORBITDataset(ORBITDataset):
         :param clip_length: (int) Number of contiguous frames per video clip.
         :param preload_clips: (bool) If True, preload clips from disk and return as tensors, otherwise return clip paths.
         :param frame_size: (int) Size in pixels of preloaded frames.
-        :param frame_annotations: (list::str) Types of frame annotations to load from disk.
+        :param annotations_to_load: (list::str) Types of frame annotations to load from disk and return per task.
         :param test_mode: (bool) If True, returns task with target set grouped by video, otherwise returns task with target set not grouped by video.
         :param with_cluster_labels: (bool) If True, use object cluster labels, otherwise use raw object labels.
         :param with_caps: (bool) If True, impose caps on the number of videos per object, otherwise leave uncapped.
         :return: Nothing.
         """
-        ORBITDataset.__init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, num_clips, clip_length, preload_clips, frame_size, frame_annotations, test_mode, with_cluster_labels, with_caps)
+        ORBITDataset.__init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, num_clips, clip_length, preload_clips, frame_size, annotations_to_load, test_mode, with_cluster_labels, with_caps)
 
     def __getitem__(self, index):
         """

@@ -230,16 +230,29 @@ The top 2 teams will be awarded cash prizes of 2,500 USD each, and be invited to
 
 Please see the [Challenge evaluation server](https://eval.ai/web/challenges/challenge-page/1438) for all other details. For any questions, please email orbit-challenge@microsoft.com. 
 
-# Annotations for ORBIT clutter videos
+# Extra annotations
 
-The bounding boxes for all clutter video frames in the ORBIT benchmark dataset are available in [`data/orbit_clutter_bounding_boxes.zip`](https://github.com/microsoft/ORBIT-Dataset/raw/master/data/orbit_clutter_bounding_boxes.zip). Note, there is _one_ bounding box per frame (i.e. the location of the labelled/target object). Other details:
-* The annotations are saved in train/validation/test folders, following the benchmark splits. These should be saved in an `annotations` folder in the root dataset directory (e.g. `path/to/orbit_benchmark_224/annotations/{train,validation,test}`).
-* In each folder, there is one JSON per video (e.g. `P177--bag--clutter--Zj_1HvmNWejSbmYf_m4YzxHhSUUl-ckBtQ-GSThX_4E.json`).
-* Each JSON contains keys that correspond to all frames in that video.
-* For each frame, annotations are saved in the format `{"P177--bag--clutter--Zj_1HvmNWejSbmYf_m4YzxHhSUUl-ckBtQ-GSThX_4E-00001.jpg": {"object_bounding_box": {"x": int, "y": int, "w": int, "h": int}, "object_not_present": false}, ...}` where `(0,0)` is the top left corner of the bounding box. The coordinates are given for the original 1080x1080 frames, thus `x` and `y` range from `[0,1079]`, and `width` and `height` from `[1,1080]`.
-* When the target object is not in the frame, the annotations are given as `{"object_bounding_box": null, "object_not_present": true}`.
+We provide additional annotations for the ORBIT benchmark dataset in [`data/orbit_extra_annotations.zip`](https://github.com/microsoft/ORBIT-Dataset/raw/master/data/orbit_extra_annotations.zip). The annotations include per-frame bounding boxes for all clutter videos, and per-frame quality issues for all clean videos. Please read below for further details.
 
-You can use `--frame_annotations` to load these annotations. The argument can take the values `object_bounding_box`, `object_not_present`, or both. This will load the specified annotations (for clutter frames only) and return them in a dictionary. At present, the code does not use these annotations for training/testing. To do so, you will need to return them in the `unpack_task` function in `utils/data.py`.
+* The annotations are saved in train/validation/test folders following the benchmark splits. These should be saved in an `annotations` folder in the root dataset directory (e.g. `path/to/orbit_benchmark_224/annotations/{train,validation,test}`).
+* In each train/validation/test folder, there is one JSON per video (e.g. `P177--bag--clutter--Zj_1HvmNWejSbmYf_m4YzxHhSUUl-ckBtQ-GSThX_4E.json`) which contains keys that correspond to all frames in that video (e.g. `{"P177--bag--clutter--Zj_1HvmNWejSbmYf_m4YzxHhSUUl-ckBtQ-GSThX_4E-00001.jpg": {frame annotations}, "P177--bag--clutter--Zj_1HvmNWejSbmYf_m4YzxHhSUUl-ckBtQ-GSThX_4E-00002.jpg": {frame annotations}, ...}`.
+* Depending on the video type, a frame's annotation dictionary will contain either bounding box *or* quality issue annotations. The only annotation common to both video types is an `object_not_present_issue`. 
+
+## Bounding boxes
+We provide per-frame bounding boxes for all clutter videos. Note, there is _one_ bounding box per frame (i.e. the location of the labelled/target object). Other details:
+
+* Bounding boxes are saved in the format `{"P177--bag--clutter--Zj_1HvmNWejSbmYf_m4YzxHhSUUl-ckBtQ-GSThX_4E-00001.jpg": {"object_bounding_box": {"x": int, "y": int, "w": int, "h": int}, "object_not_present_issue": false}, ...}` where `(0,0)` is the top left corner of the bounding box. The coordinates are given for the original 1080x1080 frames, thus `x` and `y` range from `[0,1079]`, and `width` and `height` from `[1,1080]`.
+* When the labelled/target object is not in the frame, the annotations are given as `{"object_bounding_box": null, "object_not_present_issue": true}`.
+
+## Quality issues (annotated by [Enlabeler (Pty) Ltd](https://enlabeler.com/))
+We provide per-frame quality issues for all clean videos. Note, a frame can contain any/multiple of the following 7 issues: `object_not_present_issue`, `framing_issue`, `viewpoint_issue`, `blur_issue`, `occlusion_issue`, `overexposed_issue`, `underexposed_issue`. The choice of issues was informed by [Chiu et al., 2020](https://arxiv.org/abs/2003.12511). Other details:
+
+* Quality issues are saved in the format `{"P177--bag--clean--035eFoVeNqX_d86Vb5rpcNwmk6wIWA0_3ndlrwI6OZU-00001.jpg": {"object_not_present_issue": false, "framing_issue": true, "viewpoint_issue": true, "blur_issue": false, "occlusion_issue": false, "overexposed_issue": false, "underexposed_issue": false}, ...}`.
+* When the labelled/target object is not in frame, the annotations are given as `{"object_not_present_issue": true, "framing_issue": null, "viewpoint_issue": null, "blur_issue": null, "occlusion_issue": null, "overexposed_issue": null, "underexposed_issue": null}`.
+* A 'perfect' frame (i.e. a frame with no quality issues) would have all 7 issue types set to false.
+
+## Loading the annotations
+You can use `--annotations_to_load` to load the bounding box and quality issue annotations. The argument can take any/multiple of the following: `object_bounding_box`, `object_not_present_issue`, `framing_issue`, `viewpoint_issue`, `blur_issue`, `occlusion_issue`, `overexposed_issue`, `underexposed_issue`. The specified annotations will be loaded and returned in a dictionary with the task data (note, if a frame does not have one of the specified annotations then `nan` will appear in its place). At present, the code does not use these annotations for training/testing. To do so, you will need to return them in the `unpack_task` function in `utils/data.py`.
 
 # Download unfiltered ORBIT dataset
 

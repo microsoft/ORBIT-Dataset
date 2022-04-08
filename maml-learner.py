@@ -103,7 +103,7 @@ class Learner:
             'test_num_clips': [self.args.test_context_num_clips, self.args.test_target_num_clips],
             'subsample_factor': self.args.subsample_factor,
             'frame_size': self.args.frame_size,
-            'frame_annotations': self.args.frame_annotations,
+            'annotations_to_load': self.args.annotations_to_load,
             'preload_clips': self.args.preload_clips,
         }
 
