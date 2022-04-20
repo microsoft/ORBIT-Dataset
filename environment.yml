@@ -8,5 +8,6 @@ dependencies:
   - plotly=4.8.1=py_0
   - pytorch=1.8.1
   - torchvision=0.9.1
+  - tqdm=4.62.3
   - pip:
     - thop==0.0.31-2005241907

@@ -2,3 +2,4 @@ torch==1.8.1
 torchvision==0.9.1
 thop==0.0.31-2005241907
 plotly==4.8.1
+tqdm==4.62.3
