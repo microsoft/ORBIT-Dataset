@@ -456,7 +456,7 @@ def efficientnet_params(model_name):
 
 
 def efficientnet(width_coefficient=None, depth_coefficient=None, image_size=None,
-                 dropout_rate=0.2, drop_connect_rate=0.2, num_classes=0, include_top=True):
+                 dropout_rate=0.2, drop_connect_rate=0.2, num_classes=0, include_top=False):
     """Create BlockArgs and GlobalParams for efficientnet model.
     Args:
         width_coefficient (float)
@@ -580,9 +580,8 @@ def load_pretrained_weights(model, model_name, weights_path=None, load_fc=True, 
         if '_fc.bias' in state_dict:
             state_dict.pop('_fc.bias')
         ret = model.load_state_dict(state_dict, strict=False)
-        assert set(ret.missing_keys) == set(
-            ['_fc.weight', '_fc.bias']), 'Missing keys when loading pretrained weights: {}'.format(ret.missing_keys)
-    assert not ret.unexpected_keys, 'Missing keys when loading pretrained weights: {}'.format(ret.unexpected_keys)
+        assert len(ret.missing_keys) == 0, 'Missing keys when loading pretrained weights: {}'.format(ret.missing_keys)
+    assert not ret.unexpected_keys, 'Unexpected keys when loading pretrained weights: {}'.format(ret.unexpected_keys)
 
     if verbose:
         print('Loaded pretrained weights for {}'.format(model_name))
