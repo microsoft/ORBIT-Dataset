@@ -191,7 +191,8 @@ In general, the models take 16-24GB of GPU memory for training and testing. In a
 The GPU memory requirements can be reduced by:
 * Training with LITE (only relevant for CNAPs and ProtoNets and typically only needed for 224x224 or larger images). This can be activated with the `--with_lite` flag. Memory can be further saved by lowering `--num_lite_samples`. 
 * Using a smaller `batch_size`. This is relevant for CNAPs and ProtoNets (trained with/without LITE) and also MAML and FineTuner. 
-* Lowering the `--clip_length`, `--train_context_num_clips`, `--train_target_num_clips`, or `--test_context_num_clips` arguments.
+* Lowering the `--clip_length` argument.
+* Changing the `--train_context_clip_method`, `--train_target_clip_method`, or `--test_context_clip_method` arguments.
 
 
 The CPU memory requirements can be reduced by:

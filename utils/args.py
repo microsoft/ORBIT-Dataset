@@ -62,18 +62,18 @@ def parse_args(learner='default'):
                         help="Video type for context set (default: clean).")
     parser.add_argument("--target_video_type", type=str, default='clutter', choices=['clutter', 'clean'],
                         help="Video type for target set (default: clutter).")
-    parser.add_argument("--subsample_factor", type=int, default=1,
-                        help="Factor to subsample video by before sampling clips (default: 1).")
-    parser.add_argument("--train_context_num_clips", type=str, default='random', choices=['random', 'max'],
-                        help="Number of clips to sample per context video for a train task (default: random).")
-    parser.add_argument("--train_target_num_clips", type=str, default='random', choices=['random', 'max'],
-                        help="Number of clips to sample per target video for a train task (default: random).")
-    parser.add_argument("--test_context_num_clips", type=str, default='random', choices=['random', 'max'],
-                        help="Number of clips to sample per context video for a test/validation task (default: random).")
-    parser.add_argument("--test_target_num_clips", type=str, default='max', choices=['max'],
-                        help="Number of overlapping to sample per target video for a test/validation task (default: max).")
-    parser.add_argument("--clip_length", type=int, default=8,
-                        help="Number of frames to sample per clip (default: 8).")
+    parser.add_argument("--subsample_factor", type=int, default=10,
+                        help="Factor to subsample video by if sampling clip uniformly (default: 10).")
+    parser.add_argument("--train_context_clip_method", type=str, default='random', choices=['random', 'random_200', 'max', 'uniform'],
+                        help="Method to sample clips per context video for a train task (default: random).")
+    parser.add_argument("--train_target_clip_method", type=str, default='random', choices=['random', 'random_200', 'max', 'uniform'],
+                        help="Method to sample clips per target video for a train task (default: random).")
+    parser.add_argument("--test_context_clip_method", type=str, default='random', choices=['random', 'random_200', 'max', 'uniform'],
+                        help="Method to sample clips per context video for a test/validation task (default: random).")
+    parser.add_argument("--test_target_clip_method", type=str, default='max', choices=['random', 'random_200', 'max', 'uniform'],
+                        help="Method to sample clips per target video for a test/validation task (default: max).")
+    parser.add_argument("--clip_length", type=int, default=1,
+                        help="Number of frames to sample per clip (default: 1).")
     parser.add_argument("--no_preload_clips", action="store_true",
                         help="Do not preload clips per task from disk. Use if CPU memory is limited, but will mean slower training/testing.")
     parser.add_argument("--frame_size", type=int, default=224, choices=[84, 224],

@@ -16,7 +16,7 @@ class ORBITDataset(Dataset):
     """
     Base class for ORBIT dataset.
     """
-    def __init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, num_clips, clip_length, preload_clips, frame_size, annotations_to_load, test_mode, with_cluster_labels, with_caps):
+    def __init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, clip_methods, clip_length, preload_clips, frame_size, annotations_to_load, test_mode, with_cluster_labels, with_caps):
         """
         Creates instance of ORBITDataset.
         :param root: (str) Path to train/validation/test folder in ORBIT dataset root folder.
@@ -26,7 +26,7 @@ class ORBITDataset(Dataset):
         :param shots: (int, int) Number of videos to sample for context and target sets.
         :param video_types: (str, str) Video types to sample for context and target sets.
         :param subsample_factor: (int) Factor to subsample video frames before sampling clips.
-        :param num_clips: (str, str) Number of clips of contiguous frames to sample from the video. If 'max', sample all non-overlapping clips. If random, sample random number of non-overlapping clips.
+        :param clip_methods: (str, str) Method for sampling clips of contiguous frames from videos for context and target sets.
         :param clip_length: (int) Number of contiguous frames per video clip.
         :param preload_clips: (bool) If True, preload clips from disk and return as tensors, otherwise return clip paths.
         :param frame_size: (int) Size in pixels of preloaded frames.
@@ -43,7 +43,7 @@ class ORBITDataset(Dataset):
         self.shot_context, self.shot_target = shots
         self.context_type, self.target_type = video_types
         self.subsample_factor = subsample_factor
-        self.context_num_clips, self.target_num_clips = num_clips
+        self.context_clip_method, self.target_clip_method = clip_methods
         self.clip_length = clip_length
         self.preload_clips = preload_clips
         self.frame_size = frame_size
@@ -221,17 +221,19 @@ class ORBITDataset(Dataset):
             max_shots = min(num_videos, shot_cap) # capped for memory reasons
             return random.sample(videos, max_shots)
 
-    def sample_clips_from_videos(self, video_paths: List[str], num_clips: str):
+    def sample_clips_from_videos(self, video_paths: List[str], sample_method: str):
         """
         Function to sample clips from a list of videos.
         :param video_paths: (list::str) List of video paths.
-        :param num_clips: (str) Number of clips of contiguous frames to sample from the video. If 'max', sample all non-overlapping clips. If random, sample random number of non-overlapping clips.
+        :param sample_method: (str) Method to sample clips from each video.
         :return: (list::torch.Tensor, list::np.ndarray, list::torch.Tensor, list::int) Frame data, paths, and annotations organised in clips of self.clip_length contiguous frames, and video ID for each sampled clip.
         """
         clips, paths, video_ids = [], [], []
         annotations = { ann: [] for ann in self.annotations_to_load }
         for video_path in video_paths:
-            sampled_paths = self.sample_clips_from_a_video(video_path, num_clips)
+            frame_paths = np.array(self.vid2frames[video_path])
+            sampled_idxs = self.sample_clips_from_a_video(frame_paths, sample_method)
+            sampled_paths = frame_paths[sampled_idxs].reshape(-1, self.clip_length)
             paths.extend(sampled_paths)
 
             if self.preload_clips:
@@ -312,44 +314,43 @@ class ORBITDataset(Dataset):
         frame = tv_F.normalize(frame, mean=self.normalize_stats['mean'], std=self.normalize_stats['std'])
         return frame
 
-    def sample_clips_from_a_video(self, video_path: str, num_clips: int) -> np.ndarray:
+    def sample_clips_from_a_video(self, frame_paths: np.ndarray, sample_method: str) -> np.ndarray:
         """
-        Function to sample num_clips clips from a single video.
-        :param video_path: (str) str to a single video.
-        :param num_clips: (str) Number of clips of contiguous frames to sample from the video. If 'max', sample all non-overlapping clips. If random, sample random number of non-overlapping clips.
-        :return: (np.ndarray::str) Frame paths organised in clips of self.clip_length contiguous frames.
+        Function to sample frame IDs from a list of frame paths.
+        :param frame_paths: (np.ndarray::str) List of frame paths.
+        :param sample_method: (str) Method to sample clips from each video.
+        :return: (np.ndarray) Frame IDs organised in clips of self.clip_length contiguous frames.
         """
-        # get all frame paths from video
-        frame_paths = self.vid2frames[video_path]
-
-        # subsample frames by subsample_factor
-        subsampled_frame_paths = frame_paths[0:self.frame_cap:self.subsample_factor]
-
+        frame_idxs = np.arange(len(frame_paths)) # get frame IDs
+        frame_idxs = frame_idxs[:self.frame_cap] # cap number of frames to self.frame_cap
+        
 	# if not divisible by self.clip_length, pad with last frame until it is
-        spare_frames = len(subsampled_frame_paths) % self.clip_length
-        subsampled_frame_paths.extend([subsampled_frame_paths[-1]] * (self.clip_length - spare_frames))
+        spare_frames = len(frame_idxs) % self.clip_length
+        if spare_frames > 0:
+            frame_idxs = np.append(frame_idxs, [frame_idxs[-1]]*(self.clip_length-spare_frames))
 
-        num_subsampled_frames = len(subsampled_frame_paths)
-        max_num_clips = num_subsampled_frames // self.clip_length
-        assert num_subsampled_frames % self.clip_length == 0
-
-        if num_clips == 'max': # select all non_overlapping clips from video
-            sampled_paths = subsampled_frame_paths[:max_num_clips*self.clip_length]
-            sampled_paths = np.array(sampled_paths).reshape((max_num_clips, self.clip_length))
-        elif num_clips == 'random': # select random number of non-overlapping clips from video
+        num_frames = len(frame_idxs)
+        max_num_clips = num_frames // self.clip_length
+        assert num_frames % self.clip_length == 0
+        clip_idxs = frame_idxs.reshape(max_num_clips, self.clip_length) # view as clips
+        
+        if sample_method == 'max': # select all non_overlapping clips
+            sampled_idxs = clip_idxs[:max_num_clips]
+        elif sample_method == 'random': # select random number of non-overlapping clips up to cap
             capped_num_clips = min(max_num_clips, self.clip_cap)
-            random_num_clips = random.choice(range(1, capped_num_clips+1))
-
-            frame_idxs = range(self.clip_length, len(subsampled_frame_paths)+1, self.clip_length)
-            key_frame_idxs = random.sample(frame_idxs, random_num_clips)
-            sampled_paths = []
-            for idx in key_frame_idxs:
-                sampled_paths.append(subsampled_frame_paths[idx-self.clip_length:idx])
-            sampled_paths = np.array(sampled_paths)
+            num_sampled_clips = random.choice(range(1, capped_num_clips+1))
+            sampled_idxs = random.sample(range(max_num_clips), num_sampled_clips)
+        elif sample_method == 'random_200': # select random 200 clips if there are enough
+            capped_num_clips = min(max_num_clips, 200)
+            sampled_idxs = random.sample(range(max_num_clips), capped_num_clips)
+        elif sample_method == 'uniform': # select clips uniformly up based on self.subsample_factor up to a cap
+            capped_num_clips = min(max_num_clips, self.clip_cap)
+            subsample_factor = min(self.subsample_factor, max_num_clips) # in case subsample_factor > max_num_clips
+            sampled_idxs = range(0, max_num_clips, subsample_factor)[:capped_num_clips]
         else:
-            raise ValueError(f"num_clips should be 'max' or 'random', but was {num_clips}")
+            raise ValueError(f"Clip sampling method {sample_method} not valid")
 
-        return sampled_paths # shape (num_clips, clip_length)
+        return np.array(sampled_idxs, dtype=np.int64).reshape(-1)
    
     def prepare_set(self, clips, paths, labels, annotations, video_ids, test_mode=False):
         """
@@ -453,7 +454,7 @@ class ORBITDataset(Dataset):
             obj_list.append(obj_name)
 
             context_videos, target_videos = self.sample_videos(self.obj2vids[obj])
-            cc, cp, cvi, ca = self.sample_clips_from_videos(context_videos, self.context_num_clips)
+            cc, cp, cvi, ca = self.sample_clips_from_videos(context_videos, self.context_clip_method)
             context_clips.extend(cc)
             context_paths.extend(cp)
             context_labels.extend([label for _ in range(len(cp))])
@@ -461,7 +462,7 @@ class ORBITDataset(Dataset):
             context_annotations = self.extend_ann_dict(context_annotations, ca)
 
             if with_target_set:
-                tc, tp, tvi, ta = self.sample_clips_from_videos(target_videos, self.target_num_clips)
+                tc, tp, tvi, ta = self.sample_clips_from_videos(target_videos, self.target_clip_method)
                 target_clips.extend(tc)
                 target_paths.extend(tp)
                 target_labels.extend([label for _ in range(len(tp))])
@@ -492,7 +493,7 @@ class UserEpisodicORBITDataset(ORBITDataset):
     """
     Class for user-centric episodic sampling of ORBIT dataset.
     """
-    def __init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, num_clips, clip_length, preload_clips, frame_size, annotations_to_load, test_mode, with_cluster_labels, with_caps):
+    def __init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, clip_methods, clip_length, preload_clips, frame_size, annotations_to_load, test_mode, with_cluster_labels, with_caps):
         """
         Creates instance of UserEpisodicORBITDataset.
         :param root: (str) Path to train/validation/test folder in ORBIT dataset root folder.
@@ -502,7 +503,7 @@ class UserEpisodicORBITDataset(ORBITDataset):
         :param shots: (int, int) Number of videos to sample for context and target sets.
         :param video_types: (str, str) Video types to sample for context and target sets.
         :param subsample_factor: (int) Factor to subsample video frames before sampling clips.
-        :param num_clips: (str, str) Number of clips of contiguous frames to sample from the video. If 'max', sample all non-overlapping clips. If random, sample random number of non-overlapping clips.
+        :param clip_methods: (str, str) Method for sampling clips of contiguous frames from videos for context and target sets.
         :param clip_length: (int) Number of contiguous frames per video clip.
         :param preload_clips: (bool) If True, preload clips from disk and return as tensors, otherwise return clip paths.
         :param frame_size: (int) Size in pixels of preloaded frames.
@@ -512,7 +513,7 @@ class UserEpisodicORBITDataset(ORBITDataset):
         :param with_caps: (bool) If True, impose caps on the number of videos per object, otherwise leave uncapped.
         :return: Nothing.
         """
-        ORBITDataset.__init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, num_clips, clip_length, preload_clips, frame_size, annotations_to_load, test_mode, with_cluster_labels, with_caps)
+        ORBITDataset.__init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, clip_methods, clip_length, preload_clips, frame_size, annotations_to_load, test_mode, with_cluster_labels, with_caps)
 
     def __getitem__(self, index):
         """
@@ -530,7 +531,7 @@ class ObjectEpisodicORBITDataset(ORBITDataset):
     """
     Class for object-centric episodic sampling of ORBIT dataset.
     """
-    def __init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, num_clips, clip_length, preload_clips, frame_size, annotations_to_load, test_mode, with_cluster_labels, with_caps):
+    def __init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, clip_methods, clip_length, preload_clips, frame_size, annotations_to_load, test_mode, with_cluster_labels, with_caps):
         """
         Creates instance of ObjectEpisodicORBITDataset.
         :param root: (str) Path to train/validation/test folder in ORBIT dataset root folder.
@@ -540,7 +541,7 @@ class ObjectEpisodicORBITDataset(ORBITDataset):
         :param shots: (int, int) Number of videos to sample for context and target sets.
         :param video_types: (str, str) Video types to sample for context and target sets.
         :param subsample_factor: (int) Factor to subsample video frames before sampling clips.
-        :param num_clips: (str, str) Number of clips of contiguous frames to sample from the video. If 'max', sample all non-overlapping clips. If random, sample random number of non-overlapping clips.
+        :param clip_methods: (str, str) Method for sampling clips of contiguous frames from videos for context and target sets.
         :param clip_length: (int) Number of contiguous frames per video clip.
         :param preload_clips: (bool) If True, preload clips from disk and return as tensors, otherwise return clip paths.
         :param frame_size: (int) Size in pixels of preloaded frames.
@@ -550,7 +551,7 @@ class ObjectEpisodicORBITDataset(ORBITDataset):
         :param with_caps: (bool) If True, impose caps on the number of videos per object, otherwise leave uncapped.
         :return: Nothing.
         """
-        ORBITDataset.__init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, num_clips, clip_length, preload_clips, frame_size, annotations_to_load, test_mode, with_cluster_labels, with_caps)
+        ORBITDataset.__init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, clip_methods, clip_length, preload_clips, frame_size, annotations_to_load, test_mode, with_cluster_labels, with_caps)
 
     def __getitem__(self, index):
         """
