@@ -48,7 +48,7 @@ class FewShotRecogniser(nn.Module):
     """
     def __init__(self, pretrained_extractor_path: str, feature_extractor: str, batch_normalisation: str,
         adapt_features: bool, classifier: str, clip_length: int, batch_size: int, learn_extractor: bool,
-        feature_adaptation_method: str, use_two_gpus: bool):
+        feature_adaptation_method: str, use_two_gpus: bool, logit_scale: float=1.0):
         """
         Creates instance of FewShotRecogniser.
         """
@@ -61,6 +61,7 @@ class FewShotRecogniser(nn.Module):
         self.batch_size = batch_size
         self.feature_adaptation_method = feature_adaptation_method
         self.use_two_gpus = use_two_gpus
+        self.logit_scale = logit_scale
 
         # configure feature extractor
         extractor_fn = extractors[feature_extractor]
@@ -91,15 +92,20 @@ class FewShotRecogniser(nn.Module):
             self.feature_adapter = NullAdapter()
 
         # configure classifier
+        self.classifier_name = classifier
         if classifier == 'linear':
             # classifier head will instead be appended per-task during train/test
-            self.classifier = LinearClassifier(self.feature_extractor.output_size)
+            self.classifier = LinearClassifier(self.feature_extractor.output_size, self.logit_scale)
         elif classifier == 'versa':
-            self.classifier = VersaClassifier(self.feature_extractor.output_size)
+            self.classifier = VersaClassifier(self.feature_extractor.output_size, self.logit_scale)
         elif classifier == 'proto':
-            self.classifier = PrototypicalClassifier()
+            self.classifier = PrototypicalClassifier(self.logit_scale)
+        elif classifier == 'proto_cosine':
+            self.classifier = PrototypicalClassifier(self.logit_scale, distance_fn='cosine')
         elif classifier == 'mahalanobis':
-            self.classifier = MahalanobisClassifier()
+            self.classifier = MahalanobisClassifier(self.logit_scale)
+        else:
+            raise ValueError(f"Classifier {classifier} not valid.")
 
         # configure frame pooler
         self.frame_pooler = MeanPooler(T=self.clip_length)
@@ -308,12 +314,12 @@ class MultiStepFewShotRecogniser(FewShotRecogniser):
     """
     def __init__(self, pretrained_extractor_path: str, feature_extractor: str, batch_normalisation: str,
         adapt_features: bool, classifier: str, clip_length: int, batch_size: int, learn_extractor: bool,
-        feature_adaptation_method: str, use_two_gpus: bool, num_grad_steps: int):
+        feature_adaptation_method: str, use_two_gpus: bool, num_grad_steps: int, logit_scale: float=1.0):
         """
         Creates instance of MultiStepFewShotRecogniser.
         """
         FewShotRecogniser.__init__(self, pretrained_extractor_path, feature_extractor, batch_normalisation,
-            adapt_features, classifier, clip_length, batch_size, learn_extractor,feature_adaptation_method, use_two_gpus)
+            adapt_features, classifier, clip_length, batch_size, learn_extractor,feature_adaptation_method, use_two_gpus, logit_scale)
 
         self.num_grad_steps = num_grad_steps
 
@@ -328,8 +334,8 @@ class MultiStepFewShotRecogniser(FewShotRecogniser):
         """
         lr, loss_fn, optimizer_type, extractor_scale_factor = learning_args
         num_classes = len(torch.unique(context_clip_labels))
-        self.configure_classifier(num_classes, init_zeros=True)
-        self.configure_feature_adapter()
+        self.init_classifier(num_classes)
+        self.init_feature_adapter()
         inner_loop_optimizer = init_optimizer(self, lr, optimizer_type, extractor_scale_factor)
 
         context_clip_loader = get_clip_loader((context_clips, context_clip_labels), self.batch_size, with_labels=True)
@@ -384,24 +390,22 @@ class MultiStepFewShotRecogniser(FewShotRecogniser):
 
     def personalise_with_lite(self, context_clips, context_labels):
         NotImplementedError
-
-    def configure_classifier(self, num_classes, init_zeros=False):
+    
+    def init_classifier(self, num_classes:int):
         """
-        Function that initialises and appends a linear classification layer to the model.
-        :param num_classes: (int) Number of classes in classification layer.
-        :init_zeros: (bool) If True, initialise classification layer with zeros, otherwise use Kaiming uniform.
+        Function that initialises classifier's parameters.
         :return: Nothing.
         """
-        self.classifier.configure(num_classes, self.device, init_zeros=init_zeros)
+        self.classifier.init(num_classes)
+        self.classifier.to(self.device)
 
-    def configure_feature_adapter(self):
+    def init_feature_adapter(self):
         """
-        Function that initialises learnable FiLM layers if self.adapt_features == True.
+        Function that initialises learnable FiLM layers
         :return: Nothing.
         """
-        if self.adapt_features and self.feature_adaptation_method == 'learn':
-            self.feature_adapter._init_layers()
-            self.feature_adapter.to(self.device)
+        self.feature_adapter._init_layers()
+        self.feature_adapter.to(self.device)
 
 class SingleStepFewShotRecogniser(FewShotRecogniser):
     """
@@ -409,12 +413,12 @@ class SingleStepFewShotRecogniser(FewShotRecogniser):
     """
     def __init__(self, pretrained_extractor_path: str, feature_extractor: str, batch_normalisation: str,
         adapt_features: bool, classifier: str, clip_length: int, batch_size: int, learn_extractor: bool,
-        feature_adaptation_method: str, use_two_gpus: bool, num_lite_samples: int):
+        feature_adaptation_method: str, use_two_gpus: bool, num_lite_samples: int, logit_scale: float=1.0):
         """
         Creates instance of SingleStepFewShotRecogniser.
         """
         FewShotRecogniser.__init__(self, pretrained_extractor_path, feature_extractor, batch_normalisation,
-            adapt_features, classifier, clip_length, batch_size, learn_extractor,feature_adaptation_method, use_two_gpus)
+            adapt_features, classifier, clip_length, batch_size, learn_extractor,feature_adaptation_method, use_two_gpus, logit_scale)
         self.num_lite_samples = num_lite_samples
 
     def personalise(self, context_clips, context_labels, ops_counter=None):

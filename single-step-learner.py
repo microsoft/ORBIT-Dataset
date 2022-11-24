@@ -293,10 +293,9 @@ class Learner:
                 if step % self.args.test_tasks_per_user == 0:
                     cached_target_frames_by_video, cached_target_paths_by_video, cached_target_labels_by_video = target_frames_by_video, target_paths_by_video, target_labels_by_video
 
-                # dummy warm-up to get correct timing
-                self.model.personalise(context_clips, context_labels, ops_counter=False)
-                torch.cuda.synchronize()
+                t1 = time.time()
                 self.model.personalise(context_clips, context_labels, ops_counter=self.ops_counter)
+                self.ops_counter.log_time(time.time() - t1)
 
                 # loop through cached target videos for the current task
                 for video_frames, video_paths, video_label in zip(cached_target_frames_by_video, cached_target_paths_by_video, cached_target_labels_by_video):

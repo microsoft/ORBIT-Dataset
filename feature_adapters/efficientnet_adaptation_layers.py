@@ -107,6 +107,9 @@ class FilmLayerGenerator(BaseFilmLayer):
     def _make_layer(self, in_size, out_size):
         return DenseBlock(in_size, out_size)
 
+    def _init_layer(self):
+        pass
+    
     def forward(self, x):
         """
         Function that performs a forward pass of a task embedding through the generators to get the FiLM layer's parameters.
