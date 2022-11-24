@@ -35,7 +35,7 @@ class ORBITDataset(Dataset):
         :param frame_size: (int) Size in pixels of preloaded frames.
         :param annotations_to_load: (list::str) Types of frame annotations to load from disk and return per task.
         :param filter_by_annotations (list::str) Types of frame annotations to filter by for context and target sets.
-        :param test_mode: (bool) If True, returns task with target set grouped by video, otherwise returns task with target set not grouped by video.
+        :param test_mode: (bool) If True, returns task with target set grouped by video, otherwise returns task with target set as clips.
         :param with_cluster_labels: (bool) If True, use object cluster labels, otherwise use raw object labels.
         :param with_caps: (bool) If True, impose caps on the number of videos per object, otherwise leave uncapped.
         :param logfile: (file object) File for printing out loaded data summaries.
@@ -369,7 +369,7 @@ class ORBITDataset(Dataset):
 
         return dest_dict
 
-    def load_clips(self, paths):
+    def load_clips(self, paths: np.ndarray) -> torch.Tensor:
         """
         Function to load clips from disk into tensors.
         :param paths: (np.ndarray::str) Frame paths organised in clips of self.clip_length contiguous frames.
@@ -404,7 +404,7 @@ class ORBITDataset(Dataset):
                 frame_path = paths[clip_idx, frame_idx]
                 frame_name = os.path.basename(frame_path)
                 for annotation in self.annotations_to_load:
-                    if annotation in self.frame2anns[frame_name] and self.frame2anns[frame_name][annotation] is not None:
+                    if self.frame2anns[frame_name][annotation] is not None:
                         frame_anns = self.frame2anns[frame_name]
                         loaded_annotations[annotation][clip_idx, frame_idx] = frame_anns[annotation]
                     else:
@@ -618,7 +618,7 @@ class UserEpisodicORBITDataset(ORBITDataset):
         :param frame_size: (int) Size in pixels of preloaded frames.
         :param annotations_to_load: (list::str) Types of frame annotations to load from disk and return per task.
         :param filter_by_annotations (list::str) Types of frame annotations to filter by for context and target sets.
-        :param test_mode: (bool) If True, returns task with target set grouped by video, otherwise returns task with target set not grouped by video.
+        :param test_mode: (bool) If True, returns task with target set grouped by video, otherwise returns task with target set as clips.
         :param with_cluster_labels: (bool) If True, use object cluster labels, otherwise use raw object labels.
         :param with_caps: (bool) If True, impose caps on the number of videos per object, otherwise leave uncapped.
         :param logfile: (file object) File for printing out loaded data summaries.
@@ -658,7 +658,7 @@ class ObjectEpisodicORBITDataset(ORBITDataset):
         :param frame_size: (int) Size in pixels of preloaded frames.
         :param annotations_to_load: (list::str) Types of frame annotations to load from disk and return per task.
         :param filter_by_annotations (list::str) Types of frame annotations to filter by for context and target sets.
-        :param test_mode: (bool) If True, returns task with target set grouped by video, otherwise returns task with target set not grouped by video.
+        :param test_mode: (bool) If True, returns task with target set grouped by video, otherwise returns task with target set as clips.
         :param with_cluster_labels: (bool) If True, use object cluster labels, otherwise use raw object labels.
         :param with_caps: (bool) If True, impose caps on the number of videos per object, otherwise leave uncapped.
         :param logfile: (file object) File for printing out loaded data summaries.

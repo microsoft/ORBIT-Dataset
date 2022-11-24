@@ -117,12 +117,11 @@ class TestEvaluator(Evaluator):
 
                 assert len(video_frame_paths) == len(video_frame_predictions)
                 video_id = Path(video_frame_paths[0]).parts[-2]
-                output[user_id]['user_videos'][video_id] = []
+                output[user_id]['user_videos'][video_id] = {}
 
                 for i, (path, pred) in enumerate(zip(video_frame_paths, video_frame_predictions)): # loop through frames
                     frame_id = int(Path(path).stem.split('-')[-1])
-                    assert frame_id == i+1 # frames must be sorted
-                    output[user_id]['user_videos'][video_id].append(pred)
+                    output[user_id]['user_videos'][video_id].update( {frame_id: pred} )
 
         self.json_results_path = Path(self.save_dir, "results.json")
         self.json_results_path.parent.mkdir(exist_ok=True, parents=True)
