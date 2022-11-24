@@ -6,8 +6,8 @@ dependencies:
   - python=3.7
   - pip=20.0.2=py37_3
   - plotly=4.8.1=py_0
-  - pytorch=1.8.1
-  - torchvision=0.9.1
+  - pytorch=1.11.0
+  - torchvision=0.12.0
   - tqdm=4.62.3
   - pip:
-    - thop==0.0.31-2005241907
+    - thop==0.1.1.post2207130030
