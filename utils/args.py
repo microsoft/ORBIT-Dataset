@@ -5,7 +5,9 @@ import sys
 import argparse
 
 FRAME_ANNOTATION_OPTIONS = ["object_not_present_issue", "framing_issue", "viewpoint_issue", "blur_issue", "occlusion_issue", "overexposed_issue", "underexposed_issue"]
+NEGATED_FRAME_ANNOTATION_OPTIONS = [f"no_{ann}" for ann in FRAME_ANNOTATION_OPTIONS]
 BOUNDING_BOX_OPTIONS = ["object_bounding_box"]
+ALL_FRAME_ANNOTATION_OPTIONS = FRAME_ANNOTATION_OPTIONS + NEGATED_FRAME_ANNOTATION_OPTIONS + ["no_issues"] + ["mixed_issues"]
 
 def parse_args(learner='default'):
 
@@ -44,6 +46,8 @@ def parse_args(learner='default'):
                         help="Method to sample classes for a test/validation task (default: max).")
     parser.add_argument("--train_object_cap", type=int, default=15,
                         help="Cap on objects sampled per train task (default: 15).")
+    parser.add_argument("--test_object_cap", type=int, default=15,
+                        help="Cap on objects sampled per test task (default: 15).")
     parser.add_argument("--train_context_shot_method", type=str, default="random", choices=["specific", "fixed", "random", "max"],
                         help="Method to sample context shots for a train task (default: random).")
     parser.add_argument("--train_target_shot_method", type=str, default="random", choices=["specific", "fixed", "random", "max"],
@@ -80,6 +84,10 @@ def parse_args(learner='default'):
                         help="Frame size (default: 224).")
     parser.add_argument("--annotations_to_load", nargs='+', type=str, default=[], choices=FRAME_ANNOTATION_OPTIONS+BOUNDING_BOX_OPTIONS,
                         help="Annotations to load per frame (default: None).")
+    parser.add_argument("--filter_context", nargs='+', type=str, default=[], choices=ALL_FRAME_ANNOTATION_OPTIONS,
+                        help="Criteria to filter context frames by (default: []).")
+    parser.add_argument("--filter_target", nargs='+', type=str, default=[], choices=ALL_FRAME_ANNOTATION_OPTIONS,
+                        help="Criteria to filter target frames by (default: []).")
     parser.add_argument("--train_task_type", type=str, default="user_centric", choices=["user_centric", "object_centric"],
                         help="Sample train tasks as user-centric or object-centric.")
     parser.add_argument("--train_tasks_per_user", type=int, default=50,

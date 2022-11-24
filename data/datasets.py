@@ -2,6 +2,7 @@
 # Licensed under the MIT license.
 
 import os
+import glob
 import json
 import torch
 import random
@@ -12,11 +13,13 @@ from typing import Dict, List, Union
 from torch.utils.data import Dataset
 import torchvision.transforms.functional as tv_F
 
+from utils.logging import print_and_log
+
 class ORBITDataset(Dataset):
     """
     Base class for ORBIT dataset.
     """
-    def __init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, clip_methods, clip_length, preload_clips, frame_size, annotations_to_load, test_mode, with_cluster_labels, with_caps):
+    def __init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, clip_methods, clip_length, preload_clips, frame_size, annotations_to_load, filter_by_annotations, test_mode, with_cluster_labels, with_caps, logfile=None):
         """
         Creates instance of ORBITDataset.
         :param root: (str) Path to train/validation/test folder in ORBIT dataset root folder.
@@ -31,9 +34,11 @@ class ORBITDataset(Dataset):
         :param preload_clips: (bool) If True, preload clips from disk and return as tensors, otherwise return clip paths.
         :param frame_size: (int) Size in pixels of preloaded frames.
         :param annotations_to_load: (list::str) Types of frame annotations to load from disk and return per task.
+        :param filter_by_annotations (list::str) Types of frame annotations to filter by for context and target sets.
         :param test_mode: (bool) If True, returns task with target set grouped by video, otherwise returns task with target set not grouped by video.
         :param with_cluster_labels: (bool) If True, use object cluster labels, otherwise use raw object labels.
         :param with_caps: (bool) If True, impose caps on the number of videos per object, otherwise leave uncapped.
+        :param logfile: (file object) File for printing out loaded data summaries.
         :return: Nothing.
         """
         self.root = root
@@ -50,10 +55,19 @@ class ORBITDataset(Dataset):
         self.test_mode = test_mode
         self.with_cluster_labels = with_cluster_labels
         self.with_caps = with_caps
+        self.logfile = logfile
         self.annotations_to_load = sorted(annotations_to_load)
+        filter_context, filter_target = filter_by_annotations
+        self.filter_context = sorted(filter_context)
+        self.filter_target = sorted(filter_target)
         self.with_annotations = True if annotations_to_load else False
+        self.with_frame_filtering = True if self.filter_context or self.filter_target else False
         
-        if self.with_annotations:
+        if self.with_frame_filtering:
+            print_and_log(self.logfile, f"Filtering context frames {self.filter_context}.")
+            print_and_log(self.logfile, f"Filtering target frames {self.filter_target}.") 
+
+        if self.with_annotations or self.with_frame_filtering:
             self.annotation_dims = {'object_bounding_box': 4 }
             self.annotation_root = os.path.join(os.path.dirname(self.root),  "annotations", f"{self.mode}")       # e.g. /data/orbit_benchmark/annotations/{train,validation,test}
             if not os.path.isdir(self.annotation_root):
@@ -70,12 +84,13 @@ class ORBITDataset(Dataset):
         # Setup empty collections.
         self.users = []         # List of users (str)
         self.user2objs = {}     # Dictionary of user (str): list of object ids (int)
-        self.obj2name = []      # List of object id (int) to object label (str)
-        self.obj2vids = []      # List of dictionaries: {"clean": list of video paths (str), "clutter": list of video paths (str)}
+        self.obj2user = {}      # Dictionary of object id (int) to user ids (str)
+        self.obj2name = {}      # Dictionary of object id (int) to object label (str)
+        self.obj2vids = {}      # Dictionary of dictionaries: {"clean": list of video paths (str), "clutter": list of video paths (str)}
         self.video2id = {}      # Dictionary of video path (str): video id (int)
         self.frame2anns = {}    # Dictionary of frame id (str): annotation information (dict of str to tensor)
+        self.frame2crops = {}    # Dictionary of frame id (str): valid crops (list)
         self.vid2frames = {}    # Dictionary of video id (str) to list of valid frame paths
-
         if self.with_cluster_labels:
             self.obj2cluster = []   # List of object id (int) to cluster id (int)
 
@@ -97,49 +112,150 @@ class ORBITDataset(Dataset):
             # We want a list where each object id corresponds to a specific cluster label
             cluster_id_map = self.get_label_map(cluster_classes) #TODO potentially might be an issue with filtering
             
+        # set up filter criteria per object
+        self.filter_params = { 
+                    'context': 
+                        {   
+                            'criteria': self.filter_context, 
+                            'min_video_frames': 1, 
+                            'video_type': self.context_type 
+                        },
+                    'target' : 
+                        {
+                            'criteria': self.filter_target, 
+                            'min_video_frames': 50, 
+                            'video_type': self.target_type 
+                            }
+                        }
+
         obj_id, vid_id = 0, 0
-        video_types = ['clean', 'clutter']
+        context_video_counter, target_video_counter = 0, 0
+        video_types = {'context': self.context_type, 'target': self.target_type}
         for user in tqdm(sorted(os.listdir(self.root)), desc=f"Loading {self.mode} users from {self.root}"): # loop over users
             user_path = os.path.join(self.root, user)
-            self.users.append(user)
             obj_ids = []
-            for obj_name in sorted(os.listdir(user_path)): # loop over objects per user
+
+            # loop over objects per user
+            for obj_name in sorted(os.listdir(user_path)):
                 obj_path = os.path.join(user_path, obj_name)
-                videos_by_type = {}
-                for video_type in video_types: # loop over video types per object [clean and clutter]
-                    video_type_path = os.path.join(obj_path, video_type)
-                    videos_by_type[video_type] = []
-                    for video_name in sorted(os.listdir(video_type_path)): # loop over videos per video type
-                        video_path = os.path.join(video_type_path, video_name)
-                        self.video2id[video_path] = vid_id
-                        videos_by_type[video_type].append(video_path)
-                        self.vid2frames[video_path] = [os.path.join(video_path, f) for f in sorted(os.listdir(video_path))]
-                        vid_id += 1 
-                        if self.with_annotations:
+                all_videos_by_set = {'context': [], 'target': []}
+                filtered_videos_by_set = {'context': [], 'target': []}
+                filtered_vid2frames = {}
+                
+                # get correct video types for context and target sets
+                clean_videos_dir  = os.path.join(obj_path, 'clean')
+                if self.context_type == 'clean' and self.target_type == 'clean':
+                    clean_video_paths = sorted(list(os.listdir(clean_videos_dir)))
+                    split = min(5, len(clean_video_paths)-1) # aim for 5 context videos, leaving at least 1 target video
+                    all_videos_by_set['context'] = clean_video_paths[:split]
+                    all_videos_by_set['target'] = clean_video_paths[split:]
+                elif self.context_type == 'clean' and self.target_type == 'clutter':
+                    clutter_videos_dir = os.path.join(obj_path, 'clutter')
+                    all_videos_by_set['context'] = sorted(list(os.listdir(clean_videos_dir)))
+                    all_videos_by_set['target'] = sorted(list(os.listdir(clutter_videos_dir)))
+                
+                # loop over each set [context, target]
+                for set_type, video_names in all_videos_by_set.items():
+                    # loop over videos in set
+                    for video_name in video_names:
+                        video_path = os.path.join(obj_path, video_types[set_type], video_name)
+                        frames = glob.glob(os.path.join(video_path, "*.jpg"))
+
+                        if self.with_annotations or (self.filter_params[set_type]['criteria']):
                             video_annotations = self.__load_video_annotations(video_name)
                             self.frame2anns.update(video_annotations)
+                            if self.filter_params[set_type]['criteria']:
+                                frames = self.__filter_video_frames(frames, video_annotations, self.filter_params[set_type]['criteria'])
+                        
+                        # only add if a minimum number of frames exist for the video
+                        if len(frames) >= self.filter_params[set_type]['min_video_frames']:
+                            filtered_videos_by_set[set_type].append(video_path)
+                            filtered_vid2frames[video_path] = sorted(frames)
                
-                obj_ids.append(obj_id)
-                self.obj2vids.append(videos_by_type)
-                self.obj2name.append(obj_name)
-                obj_id += 1
-                if self.with_cluster_labels:
-                    video_name = videos_by_type['clean'][-1] # all videos will have same object label, so just pick 1
-                    obj_cluster = cluster_id_map [ vid2cluster[video_name] ]
-                    self.obj2cluster.append(obj_cluster)
+                context_set_valid = len(filtered_videos_by_set['context']) > 0
+                target_set_valid = len(filtered_videos_by_set['target']) > 0
+                if context_set_valid and target_set_valid: # object is valid
+                    obj_ids.append(obj_id)
+                    self.obj2user[obj_id] = user
+                    self.obj2name[obj_id] = obj_name
+                    self.obj2vids[obj_id] = filtered_videos_by_set
+                    obj_id += 1
+                    for video_path in filtered_videos_by_set['context'] + filtered_videos_by_set['target']:
+                        self.video2id[video_path] = vid_id
+                        self.vid2frames[video_path] = filtered_vid2frames[video_path]
+                        vid_id += 1
+                    if self.with_cluster_labels:
+                        self.obj2cluster[obj_id] = cluster_id_map[vid2cluster[video_name]]
+                    context_video_counter += len(filtered_videos_by_set['context'])
+                    target_video_counter += len(filtered_videos_by_set['target'])
 
-            self.user2objs[user] = obj_ids
+            user_valid = len(obj_ids) > 0
+            if user_valid:
+                self.users.append(user)
+                self.user2objs[user] = obj_ids 
         
         self.num_users = len(self.users)
         self.num_objects = len(self.obj2name)
-        print(f"Loaded data summary: {self.num_users} users, {self.num_objects} objects, {len(self.video2id)} videos")
+        self.print_frame_count_bounds()
+        print_and_log(self.logfile, f"Loaded data summary: {self.num_users} users, {self.num_objects} objects, {len(self.video2id)} videos (#context: {context_video_counter}, #target: {target_video_counter})")
+    
+    def print_frame_count_bounds(self):
+        
+        current_bound = {
+                            'min': {'context': {'frame_count': None, 'user': [], 'obj' : []}, 'target': {'frame_count': None, 'user': [], 'obj' : []}},
+                            'max': {'context': {'frame_count': None, 'user': [], 'obj' : []}, 'target': {'frame_count': None, 'user': [], 'obj' : []}}
+                        }
+
+        for user, objs in self.user2objs.items(): # users
+            for obj in objs: # objects
+                for video_type, videos in self.obj2vids[obj].items(): # context/target
+                    frame_count = sum([len(self.vid2frames[video]) for video in videos]) # all frames (of current video_type) for current object
+                    for bound_type in ['min', 'max']:
+                        if bound_type == 'min':
+                            update_bound = current_bound[bound_type][video_type]['frame_count'] is None or frame_count < current_bound[bound_type][video_type]['frame_count']
+                        elif bound_type == 'max':
+                            update_bound = current_bound[bound_type][video_type]['frame_count'] is None or frame_count > current_bound[bound_type][video_type]['frame_count']
+                        append_to_bound = current_bound[bound_type][video_type]['frame_count'] is not None and frame_count == current_bound[bound_type][video_type]['frame_count']
+        
+                        if update_bound:
+                            current_bound[bound_type][video_type]['obj'] = [self.obj2name[obj]]
+                            current_bound[bound_type][video_type]['user'] = [user]
+                            current_bound[bound_type][video_type]['frame_count'] = frame_count
+
+                        if append_to_bound: # append objects that equal the current bound
+                            current_bound[bound_type][video_type]['obj'].append(self.obj2name[obj])
+                            current_bound[bound_type][video_type]['user'].append(user)
+
+        min_context_summary = ", ".join([f"{u} '{o}'" for u,o in zip(current_bound['min']['context']['user'], current_bound['min']['context']['obj'])])
+        max_context_summary = ", ".join([f"{u} '{o}'" for u,o in zip(current_bound['max']['context']['user'], current_bound['max']['context']['obj'])])
+        min_target_summary = ", ".join([f"{u} '{o}'" for u,o in zip(current_bound['min']['target']['user'], current_bound['min']['target']['obj'])])
+        max_target_summary = ", ".join([f"{u} '{o}'" for u,o in zip(current_bound['max']['target']['user'], current_bound['max']['target']['obj'])])
+        print_and_log(self.logfile, f"Min context frames/obj: {current_bound['min']['context']['frame_count']} ({min_context_summary})")
+        print_and_log(self.logfile, f"Min target frames/obj: {current_bound['min']['target']['frame_count']} ({min_target_summary})")
+        print_and_log(self.logfile, f"Max context frames/obj: {current_bound['max']['context']['frame_count']} ({max_context_summary})")
+        print_and_log(self.logfile, f"Max target frames/obj: {current_bound['max']['target']['frame_count']} ({max_target_summary})")
+
+    def __filter_video_frames(self, frames: List[str], video_annotations, filter_criteria: List[str]=[]) -> List[str]:
+        filtered_frames = filter(lambda seq: self.is_criteria_satisfied(seq, video_annotations, filter_criteria), frames)
+        return list(filtered_frames)
+
+    def is_criteria_satisfied(self, frame_path: str, video_annotations: Dict[str, Dict[str, Union[bool, torch.Tensor]]], filter_criteria: List[str]=[]) -> List[str]:
+        frame_name = os.path.basename(frame_path)
+
+        # get all annotations for current frame
+        frame_annotations = [ann for ann, value in video_annotations[frame_name].items() if value == True ]
+        frame_annotations += [f'no_{ann}' for ann, value in video_annotations[frame_name].items() if value == False ]
+
+        # filter frame_annotations by those that match the annotations in filter_criteria 
+        criteria_present = set(frame_annotations) & set(filter_criteria)
+        return True if criteria_present else False 
     
     def __load_video_annotations(self, video_name: str) -> Dict[str, Dict[str, Union[bool, torch.Tensor]]]:
         annotation_path = os.path.join(self.annotation_root, f"{video_name}.json")
         with open(annotation_path, 'r') as annotation_file:
             video_annotations = json.load(annotation_file)
 
-        if 'object_bounding_box' in self.annotations_to_load:
+        if 'object_bounding_box' in self.annotations_to_load or 'object_bounding_box' in self.filter_context + self.filter_target:
             video_annotations = self.__preprocess_bounding_boxes(video_annotations)
         
         return video_annotations
@@ -172,7 +288,7 @@ class ORBITDataset(Dataset):
         :return: (int) Total number if self.object_cap == 'max' otherwise returns a random number between 2 and total number.
         """
         # all user's objects if object_cap == 'max' else capped by self.object_cap
-        max_objects = num_objects if self.object_cap == 'max' else min(num_objects, self.object_cap)
+        max_objects = min(num_objects, self.object_cap)
         min_objects = 2
         if self.way_method == 'random':
             return random.choice(range(min_objects, max_objects + 1))
@@ -185,17 +301,10 @@ class ORBITDataset(Dataset):
         :param object_videos: (dict::list::str) Dictionary of context and target video paths for an object.
         :return: (list::str, list::str) Sampled context and target video paths for given object according to self.context_type (clean) and self.target_type (clean/clutter).
         """
-        if self.context_type == self.target_type == 'clean': # context = clean; target = held-out clean
-            num_context_avail = len(object_videos['clean'])
-            split = min(5, num_context_avail-1) # minimum of 5 context, unless not enough then leave at least 1 target video and use remaining as context
-            context = self.choose_videos(object_videos['clean'][:split], self.shot_context, self.shot_method_context, self.context_shot_cap)
-            target = self.choose_videos(object_videos['clean'][split:], self.shot_target, self.shot_method_target, self.target_shot_cap)
-        elif self.context_type == 'clean' and self.target_type == 'clutter': # context = clean; target = clutter
-            context = self.choose_videos(object_videos['clean'], self.shot_context, self.shot_method_context, self.context_shot_cap)
-            target = self.choose_videos(object_videos['clutter'], self.shot_target, self.shot_method_target, self.target_shot_cap)
-
+        context = self.choose_videos(object_videos['context'], self.shot_context, self.shot_method_context, self.context_shot_cap)
+        target = self.choose_videos(object_videos['target'], self.shot_target, self.shot_method_target, self.target_shot_cap)
         return context, target
-
+    
     def choose_videos(self, videos, required_shots, shot_method, shot_cap):
         """
         Function to choose video paths from a list of video paths according to required shots, shot method, and shot cap.
@@ -493,7 +602,7 @@ class UserEpisodicORBITDataset(ORBITDataset):
     """
     Class for user-centric episodic sampling of ORBIT dataset.
     """
-    def __init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, clip_methods, clip_length, preload_clips, frame_size, annotations_to_load, test_mode, with_cluster_labels, with_caps):
+    def __init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, clip_methods, clip_length, preload_clips, frame_size, annotations_to_load, filter_by_annotations, test_mode, with_cluster_labels, with_caps, logfile):
         """
         Creates instance of UserEpisodicORBITDataset.
         :param root: (str) Path to train/validation/test folder in ORBIT dataset root folder.
@@ -508,12 +617,14 @@ class UserEpisodicORBITDataset(ORBITDataset):
         :param preload_clips: (bool) If True, preload clips from disk and return as tensors, otherwise return clip paths.
         :param frame_size: (int) Size in pixels of preloaded frames.
         :param annotations_to_load: (list::str) Types of frame annotations to load from disk and return per task.
+        :param filter_by_annotations (list::str) Types of frame annotations to filter by for context and target sets.
         :param test_mode: (bool) If True, returns task with target set grouped by video, otherwise returns task with target set not grouped by video.
         :param with_cluster_labels: (bool) If True, use object cluster labels, otherwise use raw object labels.
         :param with_caps: (bool) If True, impose caps on the number of videos per object, otherwise leave uncapped.
+        :param logfile: (file object) File for printing out loaded data summaries.
         :return: Nothing.
         """
-        ORBITDataset.__init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, clip_methods, clip_length, preload_clips, frame_size, annotations_to_load, test_mode, with_cluster_labels, with_caps)
+        ORBITDataset.__init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, clip_methods, clip_length, preload_clips, frame_size, annotations_to_load, filter_by_annotations, test_mode, with_cluster_labels, with_caps, logfile)
 
     def __getitem__(self, index):
         """
@@ -531,7 +642,7 @@ class ObjectEpisodicORBITDataset(ORBITDataset):
     """
     Class for object-centric episodic sampling of ORBIT dataset.
     """
-    def __init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, clip_methods, clip_length, preload_clips, frame_size, annotations_to_load, test_mode, with_cluster_labels, with_caps):
+    def __init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, clip_methods, clip_length, preload_clips, frame_size, annotations_to_load, filter_by_annotations, test_mode, with_cluster_labels, with_caps, logfile):
         """
         Creates instance of ObjectEpisodicORBITDataset.
         :param root: (str) Path to train/validation/test folder in ORBIT dataset root folder.
@@ -546,12 +657,14 @@ class ObjectEpisodicORBITDataset(ORBITDataset):
         :param preload_clips: (bool) If True, preload clips from disk and return as tensors, otherwise return clip paths.
         :param frame_size: (int) Size in pixels of preloaded frames.
         :param annotations_to_load: (list::str) Types of frame annotations to load from disk and return per task.
+        :param filter_by_annotations (list::str) Types of frame annotations to filter by for context and target sets.
         :param test_mode: (bool) If True, returns task with target set grouped by video, otherwise returns task with target set not grouped by video.
         :param with_cluster_labels: (bool) If True, use object cluster labels, otherwise use raw object labels.
         :param with_caps: (bool) If True, impose caps on the number of videos per object, otherwise leave uncapped.
+        :param logfile: (file object) File for printing out loaded data summaries.
         :return: Nothing.
         """
-        ORBITDataset.__init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, clip_methods, clip_length, preload_clips, frame_size, annotations_to_load, test_mode, with_cluster_labels, with_caps)
+        ORBITDataset.__init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, clip_methods, clip_length, preload_clips, frame_size, annotations_to_load, filter_by_annotations, test_mode, with_cluster_labels, with_caps, logfile)
 
     def __getitem__(self, index):
         """

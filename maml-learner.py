@@ -86,6 +86,7 @@ class Learner:
             'mode': self.args.mode,
             'data_path': self.args.data_path,
             'train_object_cap': self.args.train_object_cap,
+            'test_object_cap': self.args.test_object_cap,
             'with_train_shot_caps': self.args.with_train_shot_caps,
             'with_cluster_labels': False,
             'train_way_method': self.args.train_way_method,
@@ -104,7 +105,9 @@ class Learner:
             'subsample_factor': self.args.subsample_factor,
             'frame_size': self.args.frame_size,
             'annotations_to_load': self.args.annotations_to_load,
+            'filter_by_annotations': [self.args.filter_context, self.args.filter_target],
             'preload_clips': self.args.preload_clips,
+            'logfile': self.logfile
         }
 
         dataloader = DataLoader(dataset_info)
