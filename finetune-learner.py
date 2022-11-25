@@ -92,8 +92,8 @@ class Learner:
             'test_way_method': self.args.test_way_method,
             'train_shot_methods': [self.args.train_context_shot_method, self.args.train_target_shot_method],
             'test_shot_methods': [self.args.test_context_shot_method, self.args.test_target_shot_method],
-            'train_tasks_per_user': self.args.train_tasks_per_user,
-            'test_tasks_per_user': self.args.test_tasks_per_user,
+            'num_train_tasks': self.args.num_train_tasks,
+            'num_test_tasks': self.args.num_test_tasks,
             'train_task_type': self.args.train_task_type,
             'test_set': self.args.test_set,
             'shots': [self.args.context_shot, self.args.target_shot],
@@ -135,7 +135,8 @@ class Learner:
 
     def init_evaluators(self):
         self.train_metrics = ['frame_acc']
-        self.evaluation_metrics = ['frame_acc', 'frames_to_recognition', 'video_acc']
+        self.evaluation_metrics = ['frame_acc']
+
         self.train_evaluator = TrainEvaluator(self.train_metrics)
         self.validation_evaluator = ValidationEvaluator(self.evaluation_metrics)
         self.test_evaluator = TestEvaluator(self.evaluation_metrics, self.checkpoint_dir)
@@ -214,14 +215,15 @@ class Learner:
     def validate(self):
  
         # loop through validation tasks (num_validation_users * num_test_tasks_per_user)
-        num_val_tasks = self.validation_queue.num_users * self.args.test_tasks_per_user
+        num_val_tasks = len(self.validation_queue) * self.args.num_test_tasks
         for step, task_dict in enumerate(self.validation_queue.get_tasks()):
             context_clips, context_paths, context_labels, target_frames_by_video, target_paths_by_video, target_labels_by_video, object_list = unpack_task(task_dict, self.device, context_to_device=False, preload_clips=self.args.preload_clips)
-            
-            # if this is a user's first task, cache their target videos (as they remain constant for all their tasks - ie. num_test_tasks_per_user)
-            if step % self.args.test_tasks_per_user == 0:
-                cached_target_frames_by_video, cached_target_paths_by_video, cached_target_labels_by_video = target_frames_by_video, target_paths_by_video, target_labels_by_video
+            num_context_clips = len(context_clips)
+            self.validation_evaluator.set_task_object_list(object_list)
+            self.validation_evaluator.set_task_context_paths(context_paths)
 
+            video_iterator = zip(target_frames_by_video, target_paths_by_video, target_labels_by_video)
+            
             # initialise finetuner model to initial state of self.model for current task
             finetuner = self.init_finetuner()
 
@@ -230,23 +232,32 @@ class Learner:
             finetuner.personalise(context_clips, context_labels, learning_args)
 
             with torch.no_grad():
-                # loop through cached target videos for current task
-                for video_frames, video_paths, video_label in zip(cached_target_frames_by_video, cached_target_paths_by_video, cached_target_labels_by_video):
+                # loop through target videos for current task
+                num_target_clips = 0
+                video_iterator = zip(target_frames_by_video, target_paths_by_video, target_labels_by_video)
+                for video_frames, video_paths, video_label in video_iterator:
                     video_clips = attach_frame_history(video_frames, self.args.clip_length)
                     video_logits = finetuner.predict(video_clips)
-                    self.validation_evaluator.append_video(video_logits, video_label, video_paths, object_list)
+                    self.validation_evaluator.append_video(video_logits, video_label, video_paths)
+                    num_target_clips += len(video_clips)
 
-                # if this is a user's last task, get the average performance for the user
-                if (step+1) % self.args.test_tasks_per_user == 0:
-                    _, current_user_stats = self.validation_evaluator.get_mean_stats(current_user=True)
-                    print_and_log(self.logfile, f'validation user {task_dict["user_id"]} ({self.validation_evaluator.current_user+1}/{self.validation_queue.num_users}) stats: {stats_to_str(current_user_stats)}')
+                # if this is the user's last task, get the average performance for the user over all their tasks
+                if (step+1) % self.args.num_test_tasks == 0:
+                    self.validation_evaluator.set_current_user(task_dict["task_id"])
+                    _, current_obj_stats,_,_ = self.validation_evaluator.get_mean_stats(current_user=True)
+                    print_and_log(self.logfile, f'validation user {task_dict["task_id"]} ({self.validation_evaluator.current_user+1}/{len(self.validation_queue)}) stats: {stats_to_str(current_obj_stats)} #train clips: {num_context_clips} #test clips: {num_target_clips}')
                     if (step+1) < num_val_tasks:
                         self.validation_evaluator.next_user()
+                else:
+                    self.validation_evaluator.next_task()
 
+            self.model._reset()
+        
         # get average performance over all users
-        stats_per_user, stats_per_video = self.validation_evaluator.get_mean_stats()
-        stats_per_user_str, stats_per_video_str = stats_to_str(stats_per_user), stats_to_str(stats_per_video)
-        print_and_log(self.logfile, f'validation\n per-user stats: {stats_per_user_str}\n per-video stats: {stats_per_video_str}\n')
+        stats_per_user, stats_per_obj, stats_per_task, stats_per_video = self.validation_evaluator.get_mean_stats()
+        stats_per_user_str, stats_per_obj_str, stats_per_task_str, stats_per_video_str = stats_to_str(stats_per_user), stats_to_str(stats_per_obj), stats_to_str(stats_per_task), stats_to_str(stats_per_video)
+
+        print_and_log(self.logfile, f'validation\n per-user stats: {stats_per_user_str}\n per-object stats: {stats_per_obj_str}\n per-task stats: {stats_per_task_str}\n per-video stats: {stats_per_video_str}\n')
         # save the model if validation is the best so far
         if self.validation_evaluator.is_better(stats_per_video):
             self.validation_evaluator.replace(stats_per_video)
@@ -254,23 +265,25 @@ class Learner:
             print_and_log(self.logfile, 'best validation model was updated.\n')
 
         self.validation_evaluator.reset()
-
+   
     def test(self, path):
         
         self.model = self.init_model()
-        if path: # if path is None, use model as initialised in init_model()
+        if path and os.path.exists(path): # if path exists, load from disk
             self.model.load_state_dict(torch.load(path, map_location=self.map_location), strict=False)
+        else:
+            print_and_log(self.logfile, 'warning: saved model path could not be found; using original param initialisation.')
+            path = self.checkpoint_dir
         self.ops_counter.set_base_params(self.model)
          
         # loop through test tasks (num_test_users * num_test_tasks_per_user)
-        num_test_tasks = self.test_queue.num_users * self.args.test_tasks_per_user
+        num_test_tasks = len(self.test_queue) * self.args.num_test_tasks
         for step, task_dict in enumerate(self.test_queue.get_tasks()):
             context_clips, context_paths, context_labels, target_frames_by_video, target_paths_by_video, target_labels_by_video, object_list = unpack_task(task_dict, self.device, context_to_device=False, preload_clips=self.args.preload_clips)
+            num_context_clips = len(context_clips)
+            self.test_evaluator.set_task_object_list(object_list)
+            self.test_evaluator.set_task_context_paths(context_paths)
             
-            # if this is a user's first task, cache their target videos (as they remain constant for all their tasks - ie. num_test_tasks_per_user)
-            if step % self.args.test_tasks_per_user == 0:
-                cached_target_frames_by_video, cached_target_paths_by_video, cached_target_labels_by_video = target_frames_by_video, target_paths_by_video, target_labels_by_video
-
             # initialise finetuner model to initial state of self.model for current task
             finetuner = self.init_finetuner()
 
@@ -282,26 +295,36 @@ class Learner:
             # add task's ops to self.ops_counter
             self.ops_counter.task_complete()
 
-            # loop through cached videos for the current task
+            # loop through target videos for the current task
             with torch.no_grad():
-                for video_frames, video_paths, video_label in zip(cached_target_frames_by_video, cached_target_paths_by_video, cached_target_labels_by_video):
+                num_target_clips = 0
+                video_iterator = zip(target_frames_by_video, target_paths_by_video, target_labels_by_video)
+                for video_frames, video_paths, video_label in video_iterator:
                     video_clips = attach_frame_history(video_frames, self.args.clip_length)
+                    num_clips = len(video_clips)
                     video_logits = finetuner.predict(video_clips)
-                    self.test_evaluator.append_video(video_logits, video_label, video_paths, object_list)
+                    self.test_evaluator.append_video(video_logits, video_label, video_paths)
+                    num_target_clips += num_clips
 
-                # if this is the user's last task, get the average performance for the user
-                if (step+1) % self.args.test_tasks_per_user == 0:
-                    _, current_user_stats = self.test_evaluator.get_mean_stats(current_user=True)
-                    print_and_log(self.logfile, f'{self.args.test_set} user {task_dict["user_id"]} ({self.test_evaluator.current_user+1}/{self.test_queue.num_users}) stats: {stats_to_str(current_user_stats)}')
+                # if this is the user's last task, get the average performance for the user over all their tasks
+                if (step+1) % self.args.num_test_tasks == 0:
+                    self.test_evaluator.set_current_user(task_dict["task_id"])
+                    _, current_obj_stats,_,_ = self.test_evaluator.get_mean_stats(current_user=True)
+                    print_and_log(self.logfile, f'{self.args.test_set} user {task_dict["task_id"]} ({self.test_evaluator.current_user+1}/{len(self.test_queue)}) stats: {stats_to_str(current_obj_stats)} #train clips: {num_context_clips} #test clips: {num_target_clips}')
                     if (step+1) < num_test_tasks:
                         self.test_evaluator.next_user()
+                else:
+                    self.test_evaluator.next_task()
+            
+            self.model._reset()
+            # add task's ops to self.ops_counter
+            self.ops_counter.task_complete()
 
         # get average performance over all users
-        stats_per_user, stats_per_video = self.test_evaluator.get_mean_stats()
-        stats_per_user_str, stats_per_video_str = stats_to_str(stats_per_user), stats_to_str(stats_per_video)
+        stats_per_user, stats_per_obj, stats_per_task, stats_per_video = self.test_evaluator.get_mean_stats()
+        stats_per_user_str, stats_per_obj_str, stats_per_task_str, stats_per_video_str = stats_to_str(stats_per_user), stats_to_str(stats_per_obj), stats_to_str(stats_per_task), stats_to_str(stats_per_video)
         mean_ops_stats = self.ops_counter.get_mean_stats()
-        path = path if path else self.checkpoint_dir
-        print_and_log(self.logfile, f'{self.args.test_set} [{path}]\n per-user stats: {stats_per_user_str}\n per-video stats: {stats_per_video_str}\n model stats: {mean_ops_stats}\n')
+        print_and_log(self.logfile, f'{self.args.test_set} [{path}]\n per-user stats: {stats_per_user_str}\n per-object stats: {stats_per_obj_str}\n per-task stats: {stats_per_task_str}\n per-video stats: {stats_per_video_str}\n model stats: {mean_ops_stats}\n')
         self.test_evaluator.save()
         self.test_evaluator.reset()
     

@@ -536,7 +536,7 @@ class ORBITDataset(Dataset):
                 map_dict[old_label] = new_labels[i]
             return map_dict
 
-    def sample_task(self, task_objects, with_target_set, user_id=''):
+    def sample_task(self, task_objects: List[int], with_target_set: bool, task_id: str) -> Dict:
 
         # select way (number of classes/objects) randomly
         num_objects = len(task_objects)
@@ -589,12 +589,12 @@ class ORBITDataset(Dataset):
             'context_labels': context_labels,                                   # Tensor of shape (num_context_clips,), dtype int64
             'context_annotations': context_annotations,                         # Dictionary. Empty if no annotations present. TODO: Add info for when annotations are present.
             'target_clips': target_clips,                                       # If train, tensor of shape (num_target_clips, clip_length, channels, height, width), dtype float32. If test/validation, list of length (num_target_videos_for_user) of tensors, each of shape (num_video_frames, channels, height, width), dtype float32
-            'target_paths': target_paths,                                       # If train, numpy array of shape (num_target_clips, clip_length), dtype str. If test/validation, list of length (num_target_videos_for_user) of numpy arrays, each of shape (num_video_frames,)), dtype str
+            'target_paths': target_paths,                                       # If train, numpy array of shape (num_target_clips, clip_length), dtype str. If test/validation, list of length (num_target_videos_for_user) of numpy arrays, each of shape (num_video_frames,), dtype str
             'target_labels': target_labels,                                     # If train, tensor of shape (num_target_clips,), dtype int64. If test/validation, list of length (num_target_videos_for_user) of tensors, each of shape (1,), dtype int64
             'target_annotations': target_annotations,                           # Dictionary. Empty if no annotations present. TODO: Add info for when annotations are present.
             # Extra information, to be used in logging and results.
             'object_list': obj_list,                                             # Ordered list of strings for all objects in this task.
-            'user_id': user_id                                                  # User ID ('' if ObjectEpisodicORBITDataset as task sampled from > 1 user), dtype string
+            'task_id': task_id                                                  # User ID if UserEpisodicORBITDataset else object name if ObjectEpisodicORBITDataset, dtype string
         }
         return task_dict
 

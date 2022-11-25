@@ -65,12 +65,14 @@ class LinearClassifier(nn.Module):
         :param features: (torch.Tensor) Batch of features.
         :return: (torch.Tensor) Logits over object classes for each feature.
         """
+        num_samples = features.size(0)
+        num_classes = self.weight.size(0)
         logits = self.logit_scale * F.linear(features, self.weight, self.bias)
 
         if ops_counter:
             ops_counter.add_macs(num_classes * num_samples * self.feat_dim)
         
-        return out
+        return logits
 
     def reset(self):
         self.weight = None

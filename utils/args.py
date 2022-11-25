@@ -92,10 +92,10 @@ def parse_args(learner='default'):
                         help="Criteria to filter target frames by (default: []).")
     parser.add_argument("--train_task_type", type=str, default="user_centric", choices=["user_centric", "object_centric"],
                         help="Sample train tasks as user-centric or object-centric.")
-    parser.add_argument("--train_tasks_per_user", type=int, default=50,
-                        help="Number of train tasks per user per epoch (default: 50).")
-    parser.add_argument("--test_tasks_per_user", type=int, default=5,
-                        help="Number of test tasks per user (default: 5).")
+    parser.add_argument("--num_train_tasks", type=int, default=50,
+                        help="Number of train tasks per user (if train_task_type = user_centric) or per object (if train_task_type = object_centric) per epoch (default: 50).")
+    parser.add_argument("--num_test_tasks", type=int, default=50,
+                        help="Number of validation/test tasks per user (default: 50).")
     
     # training parameters
     parser.add_argument("--seed", type=int, default=1991, 
@@ -139,7 +139,7 @@ def verify_args(learner, args):
     cyellow = "\33[33m"
     cend = "\33[0m"
     
-    if args.test_tasks_per_user > 1:
+    if args.num_test_tasks > 1:
         print('{:}warning: --test_tasks_per_user > 1 means multiple predictions are made per target frame. Only the last prediction is saved to JSON{:}'.format(cyellow, cend))
     
     if len(args.annotations_to_load) and args.no_preload_clips:
