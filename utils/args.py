@@ -122,10 +122,11 @@ def parse_args(learner='default'):
                         help="Print training by step (otherwise print by epoch).")
 
     # specific parameters
-    if learner == 'gradient-learner':
-        parser.add_argument("--num_grad_steps", type=int, required=True,
+    if learner == 'multi-step-learner':
+        finetune_group = parser.add_argument_group("Finetuning hyperparameters to use for personalization")
+        finetune_group.add_argument("--num_grad_steps", type=int, required=True,
                         help="Number of inner loop (MAML, typically 15) or fine-tuning (FineTuner, typically 50) steps.")
-        parser.add_argument("--inner_learning_rate", "--inner_lr", type=float, default=0.1,
+        finetune_group.add_argument("--inner_learning_rate", "--inner_lr", type=float, default=0.1,
                         help="Learning rate for inner loop (MAML) or fine-tuning (FineTuner) (default: 0.1).")
              
     args = parser.parse_args()
@@ -139,9 +140,6 @@ def verify_args(learner, args):
     cyellow = "\33[33m"
     cend = "\33[0m"
     
-    if args.num_test_tasks > 1:
-        print('{:}warning: --test_tasks_per_user > 1 means multiple predictions are made per target frame. Only the last prediction is saved to JSON{:}'.format(cyellow, cend))
-    
     if len(args.annotations_to_load) and args.no_preload_clips:
         sys.exit('{:}error: loading annotations with --annotations_to_load is currently not supported with --no_preload_clips{:}'.format(cred, cend))
 
@@ -154,9 +152,12 @@ def verify_args(learner, args):
         else:
             sys.exit('{:}error: --frame_size 84 not implemented for {:}{:}'.format(cred, args.feature_extractor, cend))
 
+    if learner == 'multi-step-learner':
+        if args.with_lite:
+            print('{:}warning: --with_lite is not relevant for multi-step-learner.py. Normal batching is used instead{:}'.format(cyellow, cend))
+
+        if args.adapt_features and args.feature_adaptation_method == 'generate':
+            sys.exit("{:}error: multi-step-learner.py is not a generation-based method; use --feature_adaptation_method 'finetune' instead{:}".format(cred, cend))
     if learner == 'gradient-learner':
         if args.with_lite:
-            print('{:}warning: --with_lite is not relevant for MAML and FineTuner. Normal batching is used instead{:}'.format(cyellow, cend))
-        
-        if args.adapt_features and args.feature_adaptation_method == 'generate':
-            sys.exit('{:}error: MAML/FineTuner are not generation-based methods; use --feature_adaptation_method learn{:}'.format(cred, cend))
+            print('{:}warning: --with_lite is not relevant for MAML and FineTuner. Normal batching is used instead{:}'.format(cyellow, cend)) 

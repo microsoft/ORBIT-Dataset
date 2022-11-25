@@ -133,48 +133,26 @@ python3 single-step-learner.py --data_path folder/to/save/dataset/orbit_benchmar
 
 ## MAML
 
-Implementation of optimization-based few-shot learner [MAML](https://arxiv.org/abs/1703.03400) (Finn et al., _ICML 2017_).
-
-**MAML baseline** (see [Table 5](https://arxiv.org/pdf/2104.03841.pdf])) is run with 84x84 frames and a ResNet-18 feature extractor. It is trained/tested on 1x V100 32GB GPU with training caps on the number of objects/videos per task:
-```
-python3 maml-learner.py --data_path folder/to/save/dataset/orbit_benchmark_84 --frame_size 84 \
-                        --feature_extractor resnet18 --pretrained_extractor_path features/pretrained/resnet18_imagenet_84.pth \
-                        --classifier linear --learn_extractor \
-                        --context_video_type clean --target_video_type clutter \
-                        --train_object_cap 10 --with_train_shot_caps \
-                        --learning_rate 0.00001 --inner_learning_rate 0.001 --num_grad_steps 15
-```
-Note, unlike CNAPs/ProtoNets, it may be possible to train/test on a GPU with less memory by reducing `--batch_size` (or by splitting across two smaller GPUs using `--use_two_gpus` and reducing `--batch_size`).
-
-**MAML on large images** (see [Table 1](https://arxiv.org/pdf/2107.01105.pdf)) is run with 224x224 frames and an EfficientNet-B0 feature extractor. It is trained/tested on 1x Titan RTX 24GB GPU with no training caps on the number of objects/videos per task:
-```
-python3 maml-learner.py --data_path folder/to/save/dataset/orbit_benchmark_224 --frame_size 224 \
-                        --feature_extractor efficientnetb0 --pretrained_extractor_path features/pretrained/efficientnetb0_imagenet_224.pth \
-                        --classifier linear --learn_extractor \
-                        --context_video_type clean --target_video_type clutter \
-                        --learning_rate 0.00001 --inner_learning_rate 0.001 --num_grad_steps 15 \
-                        --batch_size 16
-```
-Note, it is possible to test on a GPU with less memory by reducing `--batch_size`. 
+[MAML](https://arxiv.org/abs/1703.03400) (Finn et al., _ICML 2017_) is no longer supported in this repo. Please roll back to [this commit](https://github.com/microsoft/ORBIT-Dataset/commit/5a2b4e852d610528403f12a5130f676e5c6e48bc) if you need to run the **MAML baseline** (see [Table 5](https://arxiv.org/pdf/2104.03841.pdf])) and  **MAML on large images** (see [Table 1](https://arxiv.org/pdf/2107.01105.pdf)).
 
 ## FineTuner
 
-Implementation of transfer learning few-shot learner based on [Tian*, Wang* et al., 2020](https://arxiv.org/abs/2003.11539). Note, the FineTuner baseline first trains a generic classifier using object cluster (rather than raw object) labels. These clusters can be found in `data/orbit_{train,validation,test}_object_clusters_labels.json` and `data/object_clusters_benchmark.txt`. During validation/testing, a new linear classification layer is appended to the generic feature extractor, and the model is fine-tuned on each task using the raw object labels.
+Our implementation of a fine-tuned few-shot learner is based on [Tian*, Wang* et al., 2020](https://arxiv.org/abs/2003.11539). Note, the FineTuner baseline first trains a generic classifier using object cluster (rather than raw object) labels. These clusters can be found in `data/orbit_{train,validation,test}_object_clusters_labels.json` and `data/object_clusters_benchmark.txt`. During validation/testing, a new linear classification layer is appended to the generic feature extractor, and the model is fine-tuned on each task using the raw object labels.
 
 **FineTuner baseline** (see [Table 5](https://arxiv.org/pdf/2104.03841.pdf])) is run with 84x84 frames and a ResNet-18 feature extractor. It is trained/tested on 1x V100 32GB GPU with training caps on the number of objects/videos per task:
 ```
-python3 finetune-learner.py --data_path folder/to/save/dataset/orbit_benchmark_84 --frame_size 84 \
+python3 multi-step-learner.py --data_path folder/to/save/dataset/orbit_benchmark_84 --frame_size 84 \
                             --feature_extractor resnet18 --pretrained_extractor_path features/pretrained/resnet18_imagenet_84.pth \
                             --classifier linear --learn_extractor \
                             --context_video_type clean --target_video_type clutter \
                             --train_object_cap 10 --with_train_shot_caps \
                             --inner_learning_rate 0.1 --num_grad_steps 50 
 ```
-Note, like MAML, it is possible to train/test on a GPU with less memory by reducing `--batch_size`. 
+Note, it is possible to train/test on a GPU with less memory by reducing `--batch_size`. 
 
 **FineTuner on large images** (see [Table 1](https://arxiv.org/pdf/2107.01105.pdf)) is run with 224x224 frames and an EfficientNet-B0 feature extractor. The model used in the paper is not trained on ORBIT, but instead freezes a pre-trained ImageNet extractor and finetunes a new classification layer for each ORBIT test task using standard batch processing on 1x Titan RTX 24GB GPU:
 ```
-python3 finetune-learner.py --data_path folder/to/save/dataset/orbit_benchmark_224 --frame_size 224 \
+python3 multi-step-learner.py --data_path folder/to/save/dataset/orbit_benchmark_224 --frame_size 224 \
                             --feature_extractor efficientnetb0 --pretrained_extractor_path features/pretrained/efficientnetb0_imagenet_224.pth \
                             --mode test \
                             --classifier linear \
@@ -182,7 +160,7 @@ python3 finetune-learner.py --data_path folder/to/save/dataset/orbit_benchmark_2
                             --inner_learning_rate 0.1 --num_grad_steps 50 \
                             --batch_size 16
 ```
-Note, like MAML, it is possible to test on a GPU with less memory by reducing `--batch_size`. 
+Note, it is possible to test on a GPU with less memory by reducing `--batch_size`. 
 
 # GPU and CPU memory requirements
 
@@ -190,7 +168,7 @@ In general, the models take 16-24GB of GPU memory for training and testing. In a
 
 The GPU memory requirements can be reduced by:
 * Training with LITE (only relevant for CNAPs and ProtoNets and typically only needed for 224x224 or larger images). This can be activated with the `--with_lite` flag. Memory can be further saved by lowering `--num_lite_samples`. 
-* Using a smaller `batch_size`. This is relevant for CNAPs and ProtoNets (trained with/without LITE) and also MAML and FineTuner. 
+* Using a smaller `batch_size`. This is relevant for CNAPs and ProtoNets (trained with/without LITE) and FineTuner. 
 * Lowering the `--clip_length` argument.
 * Changing the `--train_context_clip_method`, `--train_target_clip_method`, or `--test_context_clip_method` arguments.
 
@@ -214,9 +192,6 @@ The following checkpoints have been trained on the ORBIT benchmark dataset using
 | ProtoNets |     84     |     ResNet-18     |         N          |[`orbit_cleve_protonets_resnet18_84.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cleve_protonets_resnet18_84.pth)|[`orbit_cluve_protonets_resnet18_84.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cluve_protonets_resnet18_84.pth)|
 |           |     224    |  ResNet-18  |         Y          |[`orbit_cleve_protonets_resnet18_224_lite.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cleve_protonets_resnet18_224_lite.pth)|[`orbit_cluve_protonets_resnet18_224_lite.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cluve_protonets_resnet18_224_lite.pth)|
 |           |     224    |  EfficientNet-B0  |         Y          |[`orbit_cleve_protonets_efficientnetb0_224_lite.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cleve_protonets_efficientnetb0_224_lite.pth)|[`orbit_cluve_protonets_efficientnetb0_224_lite.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cluve_protonets_efficientnetb0_224_lite.pth)|
-|    MAML   |     84     |     ResNet-18     |         N          |[`orbit_cleve_maml_resnet18_84.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cleve_maml_resnet18_84.pth)|[`orbit_cluve_maml_resnet18_84.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cluve_maml_resnet18_84.pth)|
-|           |     224    |  ResNet-18 |         Y          | [`orbit_cleve_maml_resnet18_224.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cleve_maml_resnet18_224.pth)|[`orbit_cluve_maml_resnet18_224.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cluve_maml_resnet18_224.pth)|
-|           |     224    |  EfficientNet-B0  |         Y          | [`orbit_cleve_maml_efficientnetb0_224.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cleve_maml_efficientnetb0_224.pth)|[`orbit_cluve_maml_efficientnetb0_224.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cluve_maml_efficientnetb0_224.pth)|
 | FineTuner |     84     |     ResNet-18     |         N          |[`orbit_cleve_finetuner_resnet18_84.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cleve_finetuner_resnet18_84.pth)|[`orbit_cluve_finetuner_resnet18_84.pth`](https://github.com/microsoft/ORBIT-Dataset/raw/master/checkpoints/orbit_cluve_finetuner_resnet18_84.pth)|
 
 # ORBIT Few-Shot Object Recognition Challenge
