@@ -40,7 +40,7 @@ from data.utils import unpack_task, attach_frame_history
 from models.few_shot_recognisers import MultiStepFewShotRecogniser
 from utils.args import parse_args
 from utils.ops_counter import OpsCounter
-from utils.optim import cross_entropy, init_optimizer
+from utils.optim import cross_entropy, init_optimizer, init_scheduler, get_curr_learning_rates
 from utils.logging import print_and_log, get_log_files, stats_to_str
 from utils.eval_metrics import TrainEvaluator, ValidationEvaluator, TestEvaluator
 
@@ -117,7 +117,7 @@ class Learner:
         model = MultiStepFewShotRecogniser(
                     self.args.pretrained_extractor_path, self.args.feature_extractor, self.args.batch_normalisation,
                     self.args.adapt_features, self.args.classifier, self.args.clip_length, self.args.batch_size,
-                    self.args.learn_extractor, self.args.feature_adaptation_method, self.args.use_two_gpus, self.args.num_grad_steps
+                    self.args.learn_extractor, self.args.feature_adaptation_method, self.args.use_two_gpus, self.args.logit_scale
                 )
         model._register_extra_parameters()
         model._set_device(self.device)
@@ -145,8 +145,10 @@ class Learner:
          
             num_classes = len(self.train_queue.get_cluster_classes())
             self.model.configure_classifier(num_classes, self.device)
-            self.optimizer = init_optimizer(self.model, self.args.learning_rate, extractor_scale_factor=0.1)
+            self.optimizer = init_optimizer(self.model, self.args.learning_rate, self.args.optimizer, self.args, extractor_lr_scale=self.args.extractor_lr_scale)
+            self.scheduler = init_scheduler(self.optimizer, self.args)
             
+            num_updates = 0
             for epoch in range(self.args.epochs):
                 losses = []
                 since = time.time()
@@ -165,6 +167,8 @@ class Learner:
                     if ((step + 1) % self.args.tasks_per_batch == 0) or (step == (total_steps - 1)):
                         self.optimizer.step()
                         self.optimizer.zero_grad()
+                        num_updates += 1
+                        self.scheduler.step_update(num_updates)
 
                     if self.args.print_by_step:
                         current_stats_str = stats_to_str(self.train_evaluator.get_current_stats())
@@ -172,13 +176,15 @@ class Learner:
 
                 mean_stats = self.train_evaluator.get_mean_stats()
                 mean_epoch_loss = torch.Tensor(losses).mean().item()
+                lr, fe_lr = get_curr_learning_rates(self.optimizer)
                 seconds = time.time() - since
                 # print
                 print_and_log(self.logfile, '-' * 100)
-                print_and_log(self.logfile, f'epoch [{epoch+1}/{self.args.epochs}] train loss: {mean_epoch_loss:.7f} {stats_to_str(mean_stats)} time/epoch: {int(seconds/60):d}m{int(seconds%60):02d}s')
+                print_and_log(self.logfile, f'epoch [{epoch+1}/{self.args.epochs}] train loss: {mean_epoch_loss:.7f} {stats_to_str(mean_stats)} lr: {lr:.3e} fe-lr: {fe_lr:.3e} time/epoch: {int(seconds/60):d}m{int(seconds%60):02d}s')
                 print_and_log(self.logfile, '-' * 100)
                 self.train_evaluator.reset()
-                self.save_checkpoint(epoch + 1)
+                self.save_checkpoint(epoch+1)
+                self.scheduler.step(epoch+1)
 
                 # validate
                 if (epoch + 1) >= self.args.validation_on_epoch:
@@ -188,7 +194,7 @@ class Learner:
             torch.save(self.model.state_dict(), self.checkpoint_path_final)
 
         if self.args.mode == 'train_test':
-            self.test(self.checkpoint_path_final)
+            self.test(self.checkpoint_path_final, save_evaluator=False)
             self.test(self.checkpoint_path_validation)
 
         if self.args.mode == 'test':
@@ -220,14 +226,22 @@ class Learner:
             num_context_clips = len(context_clips)
             self.validation_evaluator.set_task_object_list(object_list)
             self.validation_evaluator.set_task_context_paths(context_paths)
-
-            video_iterator = zip(target_frames_by_video, target_paths_by_video, target_labels_by_video)
-            
+ 
             # initialise finetuner model to initial state of self.model for current task
             finetuner = self.init_finetuner()
 
             # adapt to current task by finetuning on context clips
-            learning_args=(self.args.inner_learning_rate, self.loss, 'sgd', 1.0)
+            learning_args= {
+                            'num_grad_steps': self.args.personalize_num_grad_steps, 
+                            'learning_rate': self.args.personalize_learning_rate,
+                            'extractor_lr_scale': self.args.personalize_extractor_lr_scale,
+                            'loss_fn': self.loss,
+                            'optimizer': self.args.personalize_optimizer,
+                            'momentum' : self.args.personalize_momentum,
+                            'weight_decay' : self.args.personalize_weight_decay,
+                            'betas' : self.args.personalize_betas,
+                            'epsilon' : self.args.personalize_epsilon
+                            }
             finetuner.personalise(context_clips, context_labels, learning_args)
 
             with torch.no_grad():
@@ -265,7 +279,7 @@ class Learner:
 
         self.validation_evaluator.reset()
    
-    def test(self, path):
+    def test(self, path, save_evaluator=True):
         
         self.model = self.init_model()
         if path and os.path.exists(path): # if path exists, load from disk
@@ -288,7 +302,17 @@ class Learner:
 
             # adapt to current task by finetuning on context clips
             t1 = time.time()
-            learning_args=(self.args.inner_learning_rate, self.loss, 'sgd', 1.0)
+            learning_args= {
+                            'num_grad_steps': self.args.personalize_num_grad_steps, 
+                            'learning_rate': self.args.personalize_learning_rate,
+                            'extractor_lr_scale': self.args.personalize_extractor_lr_scale,
+                            'loss_fn': self.loss,
+                            'optimizer': self.args.personalize_optimizer,
+                            'momentum' : self.args.personalize_momentum,
+                            'weight_decay' : self.args.personalize_weight_decay,
+                            'betas' : self.args.personalize_betas,
+                            'epsilon' : self.args.personalize_epsilon
+                            }
             finetuner.personalise(context_clips, context_labels, learning_args, ops_counter=self.ops_counter)
             self.ops_counter.log_time(time.time() - t1)
             # add task's ops to self.ops_counter
@@ -324,7 +348,8 @@ class Learner:
         stats_per_user_str, stats_per_obj_str, stats_per_task_str, stats_per_video_str = stats_to_str(stats_per_user), stats_to_str(stats_per_obj), stats_to_str(stats_per_task), stats_to_str(stats_per_video)
         mean_ops_stats = self.ops_counter.get_mean_stats()
         print_and_log(self.logfile, f'{self.args.test_set} [{path}]\n per-user stats: {stats_per_user_str}\n per-object stats: {stats_per_obj_str}\n per-task stats: {stats_per_task_str}\n per-video stats: {stats_per_video_str}\n model stats: {mean_ops_stats}\n')
-        self.test_evaluator.save()
+        if save_evaluator:
+            self.test_evaluator.save()
         self.test_evaluator.reset()
     
     def save_checkpoint(self, epoch):

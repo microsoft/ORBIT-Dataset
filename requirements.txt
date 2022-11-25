@@ -3,3 +3,4 @@ torchvision==0.12.0
 thop==0.1.1.post2207130030
 plotly==4.8.1
 tqdm==4.62.3
+timm==0.6.7

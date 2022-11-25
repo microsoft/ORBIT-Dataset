@@ -31,6 +31,7 @@ SOFTWARE.
 import torch
 import numpy as np
 import torch.nn as nn
+from argparse import Namespace
 
 from data.utils import get_batch_indices
 from features import extractors
@@ -162,11 +163,6 @@ class FewShotRecogniser(nn.Module):
         features = []
         self._set_model_state(context)
 
-        if self.adapt_features:
-            extract_func = lambda clips: self.feature_extractor(clips, feature_adapter_params)
-        else:
-            extract_func = lambda clips: self.feature_extractor(clips)
-
         num_clips = len(clips)
         num_batches = int(np.ceil(float(num_clips) / float(self.batch_size)))
         for batch in range(num_batches):
@@ -178,9 +174,9 @@ class FewShotRecogniser(nn.Module):
             batch_clips = batch_clips.to(self.device, non_blocking=True)
             if self.use_two_gpus:
                 batch_clips = batch_clips.cuda(1)
-                batch_features = extract_func(batch_clips).cuda(0)
+                batch_features = self.feature_extractor(batch_clips, feature_adapter_params).cuda(0)
             else:
-                batch_features = extract_func(batch_clips)
+                batch_features = self.feature_extractor(batch_clips, feature_adapter_params)
 
             if ops_counter:
                 if self.adapt_features:
@@ -304,9 +300,10 @@ class FewShotRecogniser(nn.Module):
 
     def _reset(self):
         """
-        Function that resets model's classifier after a task is processed.
+        Function that resets model's task-specific parameters after a task is processed.
         :return: Nothing.
         """
+        self.feature_adapter_params = None
         self.classifier.reset()
 
 class MultiStepFewShotRecogniser(FewShotRecogniser):
@@ -323,32 +320,38 @@ class MultiStepFewShotRecogniser(FewShotRecogniser):
             adapt_features, classifier, clip_length, batch_size, learn_extractor,feature_adaptation_method, use_two_gpus, logit_scale)
 
         self.num_grad_steps = num_grad_steps
-
+    
     def personalise(self, context_clips, context_labels, learning_args, ops_counter=None):
         """
-        Function that learns a new task by taking a fixed number of gradient steps on the task's context set. For each task, a new linear classification layer is added (and FiLM layers if self.adapt_features == True).
+        Function that learns a new task by taking a fixed number of gradient steps on the task's full context set. For each task, a new linear classification layer is added (and FiLM layers if self.adapt_features == True).
         :param context_clips: (torch.Tensor) Context clips, each composed of self.clip_length contiguous frames.
         :param context_labels: (torch.Tensor) Video-level labels for each context clip.
-        :param learning_args: (float, func, str, float) Learning hyper-parameters including learning rate, loss function, optimiser type and factor to scale the extractor's learning rate.
+        :param learning_args: (dict) Hyperparameters for personalisation.
         :param ops_counter: (utils.OpsCounter or None) Object that counts operations performed.
         :return: Nothing.
         """
-        lr, loss_fn, optimizer_type, extractor_scale_factor = learning_args
+        num_grad_steps = learning_args.pop('num_grad_steps')
+        learning_rate = learning_args.pop('learning_rate')
+        optimizer = learning_args.pop('optimizer')
+        loss_fn = learning_args.pop('loss_fn')
+        extractor_lr_scale = learning_args.pop('extractor_lr_scale')
+        optimizer_kwargs = Namespace(**learning_args)
+
         num_classes = len(torch.unique(context_labels))
         self.init_classifier(num_classes)
         self.init_feature_adapter()
-        inner_loop_optimizer = init_optimizer(self, lr, optimizer_type, extractor_scale_factor)
+        personalize_optimizer = init_optimizer(self, learning_rate, optimizer, optimizer_kwargs, extractor_lr_scale)
 
         batch_context_set_size = len(context_labels)
         num_batches = int(np.ceil(float(batch_context_set_size) / float(self.batch_size)))
 
-        for _ in range(self.num_grad_steps):
+        for _ in range(num_grad_steps):
             for batch in range(num_batches):
                 batch_start_index, batch_end_index = get_batch_indices(batch, batch_context_set_size, self.batch_size)
                 batch_context_clips = context_clips[batch_start_index:batch_end_index].to(self.device)
                 batch_context_labels = context_labels[batch_start_index:batch_end_index].to(self.device)
                 batch_len = len(context_labels[batch_start_index:batch_end_index])
-                
+
                 feature_adapter_params = self._get_feature_adapter_params(None, ops_counter)
                 batch_context_features = self._get_features(batch_context_clips, feature_adapter_params, ops_counter, context=True)
                 batch_context_features = self._pool_features(batch_context_features, ops_counter)
@@ -358,9 +361,9 @@ class MultiStepFewShotRecogniser(FewShotRecogniser):
                 loss *= batch_len/batch_context_set_size
                 loss.backward()
 
-            inner_loop_optimizer.step()
-            inner_loop_optimizer.zero_grad()
-
+            personalize_optimizer.step()
+            personalize_optimizer.zero_grad()
+    
     def predict(self, clips, ops_counter=None, context=False):
         """
         Function that processes target clips in batches to get logits over object classes for each clip.
