@@ -19,7 +19,7 @@ class ORBITDataset(Dataset):
     """
     Base class for ORBIT dataset.
     """
-    def __init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, clip_methods, clip_length, preload_clips, frame_size, annotations_to_load, filter_by_annotations, test_mode, with_cluster_labels, with_caps, logfile=None):
+    def __init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, clip_methods, clip_length, frame_size, annotations_to_load, filter_by_annotations, test_mode, with_cluster_labels, with_caps, logfile=None):
         """
         Creates instance of ORBITDataset.
         :param root: (str) Path to train/validation/test folder in ORBIT dataset root folder.
@@ -28,11 +28,10 @@ class ORBITDataset(Dataset):
         :param shot_methods: (str, str) Method for sampling videos for context and target sets.
         :param shots: (int, int) Number of videos to sample for context and target sets.
         :param video_types: (str, str) Video types to sample for context and target sets.
-        :param subsample_factor: (int) Factor to subsample video frames before sampling clips.
+        :param subsample_factor: (int) Factor to subsample video frames if sampling frames uniformly.
         :param clip_methods: (str, str) Method for sampling clips of contiguous frames from videos for context and target sets.
         :param clip_length: (int) Number of contiguous frames per video clip.
-        :param preload_clips: (bool) If True, preload clips from disk and return as tensors, otherwise return clip paths.
-        :param frame_size: (int) Size in pixels of preloaded frames.
+        :param frame_size: (int) Size in pixels of loaded frames.
         :param annotations_to_load: (list::str) Types of frame annotations to load from disk and return per task.
         :param filter_by_annotations (list::str) Types of frame annotations to filter by for context and target sets.
         :param test_mode: (bool) If True, returns task with target set grouped by video, otherwise returns task with target set as clips.
@@ -50,7 +49,6 @@ class ORBITDataset(Dataset):
         self.subsample_factor = subsample_factor
         self.context_clip_method, self.target_clip_method = clip_methods
         self.clip_length = clip_length
-        self.preload_clips = preload_clips
         self.frame_size = frame_size
         self.test_mode = test_mode
         self.with_cluster_labels = with_cluster_labels
@@ -161,7 +159,7 @@ class ORBITDataset(Dataset):
                         video_path = os.path.join(obj_path, video_types[set_type], video_name)
                         frames = glob.glob(os.path.join(video_path, "*.jpg"))
 
-                        if self.with_annotations or (self.filter_params[set_type]['criteria']):
+                        if self.with_annotations or self.filter_params[set_type]['criteria']:
                             video_annotations = self.__load_video_annotations(video_name)
                             self.frame2anns.update(video_annotations)
                             if self.filter_params[set_type]['criteria']:
@@ -345,9 +343,8 @@ class ORBITDataset(Dataset):
             sampled_paths = frame_paths[sampled_idxs].reshape(-1, self.clip_length)
             paths.extend(sampled_paths)
 
-            if self.preload_clips:
-                sampled_clips = self.load_clips(sampled_paths)
-                clips += sampled_clips
+            sampled_clips = self.load_clips(sampled_paths)
+            clips += sampled_clips
             
             if self.with_annotations:
                 sampled_annotations = self.load_annotations(sampled_paths)
@@ -386,21 +383,24 @@ class ORBITDataset(Dataset):
 
         return loaded_clips
     
-    def load_annotations(self, paths: np.ndarray) -> torch.Tensor:
+    def load_annotations(self, paths: np.ndarray, without_clip_history=True) -> torch.Tensor:
         """
-        Function to load frame annotations, arrange in clips, from disk.
+        Function to load frame annotations, arrange in clips.
         :param paths: (np.ndarray::str) Frame paths organised in clips of self.clip_length contiguous frames.
+        :param without_clip_history: (bool) If True, only load annotations for last frame in every clip.
         :return: (torch.Tensor) Frame annotations arranged in clips.
         """
         num_clips, clip_length = paths.shape
+        frames_per_clip = 1 if without_clip_history else clip_length
         assert clip_length == self.clip_length
 
         loaded_annotations = {
-            annotation : torch.empty(num_clips, clip_length, self.annotation_dims.get(annotation, 1))     # The dimension defaults to 1 unless specified.
+            annotation : torch.empty(num_clips, frames_per_clip, self.annotation_dims.get(annotation, 1))     # The dimension defaults to 1 unless specified.
             for annotation in self.annotations_to_load }
 
         for clip_idx in range(num_clips):
-            for frame_idx in range(clip_length):
+            frames_to_load = [clip_length-1] if without_clip_history else range(clip_length)
+            for frame_idx in frames_to_load:
                 frame_path = paths[clip_idx, frame_idx]
                 frame_name = os.path.basename(frame_path)
                 for annotation in self.annotations_to_load:
@@ -411,11 +411,11 @@ class ORBITDataset(Dataset):
                         loaded_annotations[annotation][clip_idx, frame_idx] = float('nan')
 
         return loaded_annotations
-
+    
     def load_and_transform_frame(self, frame_path):
         """
         Function to load and transform frame.
-        :param frame_path: (str) str to frame.
+        :param frame_path: (str) Path to frame.
         :return: (torch.Tensor) Loaded and transformed frame.
         """
         frame = Image.open(frame_path)
@@ -472,7 +472,7 @@ class ORBITDataset(Dataset):
         :param test_mode: (bool) If False, do not shuffle task, otherwise shuffle.
         :return: (torch.Tensor or list::torch.Tensor, np.ndarray::str or list::np.ndarray, torch.Tensor or list::torch.Tensor, dict::torch.Tensor or list::dict::torch.Tensor) Frame data, paths, video-level labels and annotations organised in clips (if train) or grouped and flattened by video (if test/validation).
         """
-        clips = torch.stack(clips) if self.preload_clips else torch.tensor(clips)
+        clips = torch.stack(clips)
         paths = np.array(paths)
         labels = torch.tensor(labels)
         annotations = { ann: torch.stack(annotations[ann]) for ann in self.annotations_to_load }
@@ -484,7 +484,7 @@ class ORBITDataset(Dataset):
                 # get all clips belonging to current video
                 idxs = video_ids == video_id
                 # flatten frames and paths from current video (assumed to be sorted)
-                video_frames = clips[idxs].flatten(end_dim=1) if self.preload_clips else None
+                video_frames = clips[idxs].flatten(end_dim=1)
                 video_paths = paths[idxs].reshape(-1)
                 frames_by_video.append(video_frames)
                 paths_by_video.append(video_paths)
@@ -492,7 +492,7 @@ class ORBITDataset(Dataset):
                 video_label = labels[idxs][0]
                 labels_by_video.append(video_label)
                 # get all frame annotations for current video
-                video_anns = { ann : annotations[ann][idxs].flatten(end_dim=1) for ann in self.annotations_to_load } if self.with_annotations else None 
+                video_anns = { ann : annotations[ann][idxs].flatten(end_dim=1) for ann in self.annotations_to_load } if self.with_annotations else None
                 annotations_by_video.append(video_anns)
             return frames_by_video, paths_by_video, labels_by_video, annotations_by_video
         else:
@@ -509,16 +509,10 @@ class ORBITDataset(Dataset):
         """
         idxs = np.arange(len(paths))
         random.shuffle(idxs)
-        if self.preload_clips:
-            if self.with_annotations:
-                return clips[idxs], paths[idxs], labels[idxs], { ann : annotations[ann][idxs] for ann in self.annotations_to_load }
-            else:
-                return clips[idxs], paths[idxs], labels[idxs], annotations
+        if self.with_annotations:
+            return clips[idxs], paths[idxs], labels[idxs], { ann : annotations[ann][idxs] for ann in self.annotations_to_load }
         else:
-            if self.with_annotations:
-                return clips, paths[idxs], labels[idxs], { ann : annotations[ann][idxs] for ann in self.annotations_to_load }
-            else:
-                return clips, paths[idxs], labels[idxs], annotations
+            return clips[idxs], paths[idxs], labels[idxs], annotations
 
     def get_label_map(self, objects, with_cluster_labels=False):
         """
@@ -536,7 +530,7 @@ class ORBITDataset(Dataset):
                 map_dict[old_label] = new_labels[i]
             return map_dict
 
-    def sample_task(self, task_objects: List[int], with_target_set: bool, task_id: str) -> Dict:
+    def sample_task(self, task_objects: List[int], task_id: str) -> Dict:
 
         # select way (number of classes/objects) randomly
         num_objects = len(task_objects)
@@ -570,17 +564,15 @@ class ORBITDataset(Dataset):
             context_video_ids.extend(cvi)
             context_annotations = self.extend_ann_dict(context_annotations, ca)
 
-            if with_target_set:
-                tc, tp, tvi, ta = self.sample_clips_from_videos(target_videos, self.target_clip_method)
-                target_clips.extend(tc)
-                target_paths.extend(tp)
-                target_labels.extend([label for _ in range(len(tp))])
-                target_video_ids.extend(tvi)
-                target_annotations = self.extend_ann_dict(target_annotations, ta)
+            tc, tp, tvi, ta = self.sample_clips_from_videos(target_videos, self.target_clip_method)
+            target_clips.extend(tc)
+            target_paths.extend(tp)
+            target_labels.extend([label for _ in range(len(tp))])
+            target_video_ids.extend(tvi)
+            target_annotations = self.extend_ann_dict(target_annotations, ta)
 
         context_clips, context_paths, context_labels, context_annotations = self.prepare_set(context_clips, context_paths, context_labels, context_annotations, context_video_ids)
-        if with_target_set:
-            target_clips, target_paths, target_labels, target_annotations = self.prepare_set(target_clips, target_paths, target_labels, target_annotations, target_video_ids, test_mode=self.test_mode)
+        target_clips, target_paths, target_labels, target_annotations = self.prepare_set(target_clips, target_paths, target_labels, target_annotations, target_video_ids, test_mode=self.test_mode)
 
         task_dict = {
             # Data required for train / test
@@ -602,7 +594,7 @@ class UserEpisodicORBITDataset(ORBITDataset):
     """
     Class for user-centric episodic sampling of ORBIT dataset.
     """
-    def __init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, clip_methods, clip_length, preload_clips, frame_size, annotations_to_load, filter_by_annotations, test_mode, with_cluster_labels, with_caps, logfile):
+    def __init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, clip_methods, clip_length, frame_size, annotations_to_load, filter_by_annotations, test_mode, with_cluster_labels, with_caps, logfile):
         """
         Creates instance of UserEpisodicORBITDataset.
         :param root: (str) Path to train/validation/test folder in ORBIT dataset root folder.
@@ -611,11 +603,10 @@ class UserEpisodicORBITDataset(ORBITDataset):
         :param shot_methods: (str, str) Method for sampling videos for context and target sets.
         :param shots: (int, int) Number of videos to sample for context and target sets.
         :param video_types: (str, str) Video types to sample for context and target sets.
-        :param subsample_factor: (int) Factor to subsample video frames before sampling clips.
+        :param subsample_factor: (int) Factor to subsample video frames if sampling frames uniformly.
         :param clip_methods: (str, str) Method for sampling clips of contiguous frames from videos for context and target sets.
         :param clip_length: (int) Number of contiguous frames per video clip.
-        :param preload_clips: (bool) If True, preload clips from disk and return as tensors, otherwise return clip paths.
-        :param frame_size: (int) Size in pixels of preloaded frames.
+        :param frame_size: (int) Size in pixels of loaded frames.
         :param annotations_to_load: (list::str) Types of frame annotations to load from disk and return per task.
         :param filter_by_annotations (list::str) Types of frame annotations to filter by for context and target sets.
         :param test_mode: (bool) If True, returns task with target set grouped by video, otherwise returns task with target set as clips.
@@ -624,25 +615,24 @@ class UserEpisodicORBITDataset(ORBITDataset):
         :param logfile: (file object) File for printing out loaded data summaries.
         :return: Nothing.
         """
-        ORBITDataset.__init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, clip_methods, clip_length, preload_clips, frame_size, annotations_to_load, filter_by_annotations, test_mode, with_cluster_labels, with_caps, logfile)
+        ORBITDataset.__init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, clip_methods, clip_length, frame_size, annotations_to_load, filter_by_annotations, test_mode, with_cluster_labels, with_caps, logfile)
 
     def __getitem__(self, index):
         """
         Function to get a user-centric task as a set of (context and target) clips and labels.
-        :param index: (tuple) Task ID and whether to load task target set.
+        :param index: (tuple) Task index.
         :return: (dict) Context and target set data for task.
         """
 
-        task_id, with_target_set = index
-        user = self.users[task_id] # get user (each task == user id)
+        user = self.users[index] # get user (each task == user id)
         user_objects = self.user2objs[user] # get user's objects
-        return self.sample_task(user_objects, with_target_set, user)
+        return self.sample_task(user_objects, user)
 
 class ObjectEpisodicORBITDataset(ORBITDataset):
     """
     Class for object-centric episodic sampling of ORBIT dataset.
     """
-    def __init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, clip_methods, clip_length, preload_clips, frame_size, annotations_to_load, filter_by_annotations, test_mode, with_cluster_labels, with_caps, logfile):
+    def __init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, clip_methods, clip_length, frame_size, annotations_to_load, filter_by_annotations, test_mode, with_cluster_labels, with_caps, logfile):
         """
         Creates instance of ObjectEpisodicORBITDataset.
         :param root: (str) Path to train/validation/test folder in ORBIT dataset root folder.
@@ -651,11 +641,10 @@ class ObjectEpisodicORBITDataset(ORBITDataset):
         :param shot_methods: (str, str) Method for sampling videos for context and target sets.
         :param shots: (int, int) Number of videos to sample for context and target sets.
         :param video_types: (str, str) Video types to sample for context and target sets.
-        :param subsample_factor: (int) Factor to subsample video frames before sampling clips.
+        :param subsample_factor: (int) Factor to subsample video frames if sampling frames uniformly.
         :param clip_methods: (str, str) Method for sampling clips of contiguous frames from videos for context and target sets.
         :param clip_length: (int) Number of contiguous frames per video clip.
-        :param preload_clips: (bool) If True, preload clips from disk and return as tensors, otherwise return clip paths.
-        :param frame_size: (int) Size in pixels of preloaded frames.
+        :param frame_size: (int) Size in pixels of loaded frames.
         :param annotations_to_load: (list::str) Types of frame annotations to load from disk and return per task.
         :param filter_by_annotations (list::str) Types of frame annotations to filter by for context and target sets.
         :param test_mode: (bool) If True, returns task with target set grouped by video, otherwise returns task with target set as clips.
@@ -664,14 +653,13 @@ class ObjectEpisodicORBITDataset(ORBITDataset):
         :param logfile: (file object) File for printing out loaded data summaries.
         :return: Nothing.
         """
-        ORBITDataset.__init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, clip_methods, clip_length, preload_clips, frame_size, annotations_to_load, filter_by_annotations, test_mode, with_cluster_labels, with_caps, logfile)
+        ORBITDataset.__init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, clip_methods, clip_length, frame_size, annotations_to_load, filter_by_annotations, test_mode, with_cluster_labels, with_caps, logfile)
 
     def __getitem__(self, index):
         """
         Function to get a object-centric task as a set of (context and target) clips and labels.
-        :param index: (tuple) Task ID and whether to load task target set.
+        :param index: (tuple) Task index.
         :return: (dict) Context and target set data for task.
         """
-        _, with_target_set = index
         all_objects = range(0, len(self.obj2vids)) # task can consider all possible objects, not just 1 user's objects
-        return self.sample_task(all_objects, with_target_set)
+        return self.sample_task(all_objects)

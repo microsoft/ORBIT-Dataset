@@ -36,11 +36,11 @@ import numpy as np
 import torch.backends.cudnn as cudnn
 
 from data.dataloaders import DataLoader
+from data.utils import get_batch_indices, unpack_task, attach_frame_history
 from models.few_shot_recognisers import SingleStepFewShotRecogniser
 from utils.args import parse_args
 from utils.ops_counter import OpsCounter
 from utils.optim import cross_entropy, init_optimizer
-from utils.data import get_clip_loader, unpack_task, attach_frame_history
 from utils.logging import print_and_log, get_log_files, stats_to_str
 from utils.eval_metrics import TrainEvaluator, ValidationEvaluator, TestEvaluator
 
@@ -107,7 +107,6 @@ class Learner:
             'frame_size': self.args.frame_size,
             'annotations_to_load': self.args.annotations_to_load,
             'filter_by_annotations': [self.args.filter_context, self.args.filter_target],
-            'preload_clips': self.args.preload_clips,
             'logfile': self.logfile
         }
         
@@ -190,7 +189,7 @@ class Learner:
         self.logfile.close()
 
     def train_task(self, task_dict):
-        context_clips, context_paths, context_labels, target_clips, target_paths, target_labels, object_list = unpack_task(task_dict, self.device, target_to_device=True, preload_clips=self.args.preload_clips)
+        context_clips, context_paths, context_labels, target_clips, target_paths, target_labels, object_list = unpack_task(task_dict, self.device, target_to_device=True)
 
         self.model.personalise(context_clips, context_labels)
         target_logits = self.model.predict(target_clips)
@@ -206,32 +205,37 @@ class Learner:
         return task_loss
 
     def train_task_with_lite(self, task_dict):
-        context_clips, context_paths, context_labels, target_clips, target_paths, target_labels, object_list = unpack_task(task_dict, self.device, preload_clips=self.args.preload_clips)
+        context_clips, context_paths, context_labels, target_clips, target_paths, target_labels, object_list = unpack_task(task_dict, self.device)
 
         # compute and save personalise outputs of whole context set with back-propagation disabled
         self.model._cache_context_outputs(context_clips)
 
         task_loss = 0
-        target_logits = []
-        target_clip_loader = get_clip_loader((target_clips, target_labels), self.args.batch_size, with_labels=True)
-        for batch_target_clips, batch_target_labels in target_clip_loader:
+        target_logits, target_boxes_pred = [], []
+        num_clips = len(target_clips)
+        num_batches = int(np.ceil(float(num_clips) / float(self.args.batch_size)))
+        for batch in range(num_batches):
             self.model.personalise_with_lite(context_clips, context_labels)
-            batch_target_clips = batch_target_clips.to(device=self.device)
-            batch_target_labels = batch_target_labels.to(device=self.device)
-            batch_target_logits = self.model.predict_a_batch(batch_target_clips)  
+
+            batch_start_index, batch_end_index = get_batch_indices(batch, num_clips, self.args.batch_size)
+            batch_target_clips = target_clips[batch_start_index:batch_end_index].to(device=self.device)
+            batch_target_labels = target_labels[batch_start_index:batch_end_index].to(device=self.device)
+
+            batch_target_logits = self.model.predict_a_batch(batch_target_clips)
             target_logits.extend(batch_target_logits.detach())
-           
+
             loss_scaling = len(context_labels) / (self.args.num_lite_samples * self.args.tasks_per_batch)
             batch_loss = loss_scaling * self.loss(batch_target_logits, batch_target_labels)
-            batch_loss += 0.001 * self.model.feature_adapter.regularization_term(switch_device=self.args.use_two_gpus) 
+            batch_loss += 0.001 * self.model.feature_adapter.regularization_term(switch_device=self.args.use_two_gpus)
             batch_loss.backward(retain_graph=False)
             task_loss += batch_loss.detach()
-            
+
             # reset task's params
             self.model._reset()
 
         target_logits = torch.stack(target_logits)
         self.train_evaluator.update_stats(target_logits, target_labels)
+
         return task_loss
     
     def validate(self):
@@ -241,7 +245,7 @@ class Learner:
             # loop through validation tasks (num_validation_users * num_test_tasks_per_user)
             num_val_tasks = len(self.validation_queue) * self.args.num_test_tasks
             for step, task_dict in enumerate(self.validation_queue.get_tasks()):
-                context_clips, context_paths, context_labels, target_frames_by_video, target_paths_by_video, target_labels_by_video, object_list = unpack_task(task_dict, self.device, preload_clips=self.args.preload_clips)
+                context_clips, context_paths, context_labels, target_frames_by_video, target_paths_by_video, target_labels_by_video, object_list = unpack_task(task_dict, self.device)
                 num_context_clips = len(context_clips)
                 self.validation_evaluator.set_task_object_list(object_list)
                 self.validation_evaluator.set_task_context_paths(context_paths)
@@ -293,7 +297,7 @@ class Learner:
             # loop through test tasks (num_test_users * num_test_tasks_per_user)
             num_test_tasks = len(self.test_queue) * self.args.num_test_tasks
             for step, task_dict in enumerate(self.test_queue.get_tasks()):
-                context_clips, context_paths, context_labels, target_frames_by_video, target_paths_by_video, target_labels_by_video, object_list = unpack_task(task_dict, self.device, preload_clips=self.args.preload_clips)
+                context_clips, context_paths, context_labels, target_frames_by_video, target_paths_by_video, target_labels_by_video, object_list = unpack_task(task_dict, self.device)
                 num_context_clips = len(context_clips)
                 self.test_evaluator.set_task_object_list(object_list)
                 self.test_evaluator.set_task_context_paths(context_paths)

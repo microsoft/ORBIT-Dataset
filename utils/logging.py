@@ -7,7 +7,8 @@ from datetime import datetime
 
 def print_and_log(log_file, message):
     print(message)
-    log_file.write(message + '\n')
+    if log_file:
+        log_file.write(message + '\n')
 
 def get_log_files(checkpoint_dir, model_path):
     """

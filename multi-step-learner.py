@@ -36,11 +36,11 @@ import numpy as np
 import torch.backends.cudnn as cudnn
 
 from data.dataloaders import DataLoader
+from data.utils import unpack_task, attach_frame_history
 from models.few_shot_recognisers import MultiStepFewShotRecogniser
 from utils.args import parse_args
 from utils.ops_counter import OpsCounter
 from utils.optim import cross_entropy, init_optimizer
-from utils.data import unpack_task, attach_frame_history
 from utils.logging import print_and_log, get_log_files, stats_to_str
 from utils.eval_metrics import TrainEvaluator, ValidationEvaluator, TestEvaluator
 
@@ -105,7 +105,6 @@ class Learner:
             'frame_size': self.args.frame_size,
             'annotations_to_load': self.args.annotations_to_load,
             'filter_by_annotations': [self.args.filter_context, self.args.filter_target],
-            'preload_clips': self.args.preload_clips,
             'logfile': self.logfile
         }
 
@@ -199,9 +198,9 @@ class Learner:
 
     def train_task(self, task_dict):
 
-        context_clips, context_frames, context_labels, target_clips, target_frames, target_labels, object_list = unpack_task(task_dict, self.device, target_to_device=True, preload_clips=self.args.preload_clips)
+        context_clips, context_frames, context_labels, target_clips, target_frames, target_labels, object_list = unpack_task(task_dict, self.device, target_to_device=True)
       
-        joint_context_clips = torch.cat((context_clips, target_clips)) if self.args.preload_clips else np.concatenate((context_clips, target_clips))
+        joint_context_clips = torch.cat((context_clips, target_clips))
         joint_context_labels = torch.cat((context_labels, target_labels), dim=0)
         joint_context_logits = self.model.predict(joint_context_clips, context=True)
         self.train_evaluator.update_stats(joint_context_logits, joint_context_labels) 
@@ -217,7 +216,7 @@ class Learner:
         # loop through validation tasks (num_validation_users * num_test_tasks_per_user)
         num_val_tasks = len(self.validation_queue) * self.args.num_test_tasks
         for step, task_dict in enumerate(self.validation_queue.get_tasks()):
-            context_clips, context_paths, context_labels, target_frames_by_video, target_paths_by_video, target_labels_by_video, object_list = unpack_task(task_dict, self.device, context_to_device=False, preload_clips=self.args.preload_clips)
+            context_clips, context_paths, context_labels, target_frames_by_video, target_paths_by_video, target_labels_by_video, object_list = unpack_task(task_dict, self.device, context_to_device=False)
             num_context_clips = len(context_clips)
             self.validation_evaluator.set_task_object_list(object_list)
             self.validation_evaluator.set_task_context_paths(context_paths)
@@ -279,7 +278,7 @@ class Learner:
         # loop through test tasks (num_test_users * num_test_tasks_per_user)
         num_test_tasks = len(self.test_queue) * self.args.num_test_tasks
         for step, task_dict in enumerate(self.test_queue.get_tasks()):
-            context_clips, context_paths, context_labels, target_frames_by_video, target_paths_by_video, target_labels_by_video, object_list = unpack_task(task_dict, self.device, context_to_device=False, preload_clips=self.args.preload_clips)
+            context_clips, context_paths, context_labels, target_frames_by_video, target_paths_by_video, target_labels_by_video, object_list = unpack_task(task_dict, self.device, context_to_device=False)
             num_context_clips = len(context_clips)
             self.test_evaluator.set_task_object_list(object_list)
             self.test_evaluator.set_task_context_paths(context_paths)

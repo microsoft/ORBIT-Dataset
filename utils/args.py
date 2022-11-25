@@ -80,8 +80,6 @@ def parse_args(learner='default'):
                         help="Method to sample clips per target video for a test/validation task (default: max).")
     parser.add_argument("--clip_length", type=int, default=1,
                         help="Number of frames to sample per clip (default: 1).")
-    parser.add_argument("--no_preload_clips", action="store_true",
-                        help="Do not preload clips per task from disk. Use if CPU memory is limited, but will mean slower training/testing.")
     parser.add_argument("--frame_size", type=int, default=224, choices=[84, 224],
                         help="Frame size (default: 224).")
     parser.add_argument("--annotations_to_load", nargs='+', type=str, default=[], choices=FRAME_ANNOTATION_OPTIONS+BOUNDING_BOX_OPTIONS,
@@ -130,7 +128,6 @@ def parse_args(learner='default'):
                         help="Learning rate for inner loop (MAML) or fine-tuning (FineTuner) (default: 0.1).")
              
     args = parser.parse_args()
-    args.preload_clips = not args.no_preload_clips
     verify_args(learner, args)
     return args
 
@@ -140,9 +137,6 @@ def verify_args(learner, args):
     cyellow = "\33[33m"
     cend = "\33[0m"
     
-    if len(args.annotations_to_load) and args.no_preload_clips:
-        sys.exit('{:}error: loading annotations with --annotations_to_load is currently not supported with --no_preload_clips{:}'.format(cred, cend))
-
     if 'train' in args.mode and not args.learn_extractor and not args.adapt_features:
         sys.exit('{:}error: at least one of "--learn_extractor" and "--adapt_features" must be used during training{:}'.format(cred, cend))
 
