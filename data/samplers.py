@@ -7,27 +7,27 @@ from torch.utils.data.sampler import Sampler
 
 class TaskSampler(Sampler):
     """
-    Sampler class for a fixed number of tasks per user. 
+    Sampler class for a fixed number of tasks per user/object. 
     """
-    def __init__(self, tasks_per_user, num_users, shuffle):
+    def __init__(self, num_tasks_per_item, num_items, shuffle):
         """
         Creates instances of TaskSampler.
-        :param tasks_per_user: (int) Number of tasks to sample per user.
-        :param num_users: (int) Total number of users.
+        :param num_tasks_per_item: (int) Number of tasks to sample per user/object.
+        :param num_items: (int) Total number of users/objects.
         :param shuffle: (bool) If True, shuffle tasks, otherwise do not shuffle.
         :return: Nothing.
         """
-        self.tasks_per_user = tasks_per_user
-        self.num_users = num_users
+        self.num_tasks_per_item = num_tasks_per_item
+        self.num_items = num_items
         self.shuffle = shuffle
 
     def __iter__(self):
         task_ids = []
-        for user in range(self.num_users):
-            task_ids.extend([user]*self.tasks_per_user)
+        for item in range(self.num_items):
+            task_ids.extend([item]*self.num_tasks_per_item)
         if self.shuffle:
             random.shuffle(task_ids)
         return iter(task_ids)
 
     def __len__(self):
-        return self.num_users*self.tasks_per_user
+        return self.num_items*self.num_tasks_per_item
