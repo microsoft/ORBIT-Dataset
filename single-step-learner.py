@@ -117,11 +117,10 @@ class Learner:
         
     def init_model(self):
         self.model = SingleStepFewShotRecogniser(
-                        self.args.pretrained_extractor_path, self.args.feature_extractor, self.args.batch_normalisation,
+                        self.args.pretrained_extractor_path, self.args.feature_extractor,
                         self.args.adapt_features, self.args.classifier, self.args.clip_length, self.args.batch_size,
                         self.args.learn_extractor, self.args.feature_adaptation_method, self.args.use_two_gpus, self.args.num_lite_samples, self.args.logit_scale)
                     )
-        self.model._register_extra_parameters()
         self.model._set_device(self.device)
         self.model._send_to_device()
         

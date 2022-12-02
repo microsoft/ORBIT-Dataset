@@ -30,7 +30,6 @@ SOFTWARE.
 
 import torch
 import torch.nn as nn
-from models.normalisation_layers import TaskNorm, get_normalisation_layer
 from feature_adapters.resnet_adaptation_layers import FilmLayer, FilmLayerGenerator
 
 def conv3x3(in_planes, out_planes, stride=1):
@@ -129,15 +128,16 @@ class BasicBlockFilm(nn.Module):
 
 
 class ResNet(nn.Module):
-    def __init__(self, block, layers, bn_fn, initial_pool=True, conv1_kernel_size=7):
+    def __init__(self, block, layers, initial_pool=True, conv1_kernel_size=7):
         super(ResNet, self).__init__()
+        bn_fn = nn.BatchNorm2d
         self.initial_pool = initial_pool # False for 84x84
         self.inplanes = self.curr_planes = 64
         self.conv1 = nn.Conv2d(3, self.curr_planes, kernel_size=conv1_kernel_size, stride=2, padding=1, bias=False)
         self.bn1 = bn_fn(self.curr_planes)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        self.layer1 = self._make_layer(block, self.inplanes, layers[0], bn_fn)
+        self.layer1 = self._make_layer(block, self.inplanes, layers[0], nn.Batch
         self.layer2 = self._make_layer(block, self.inplanes * 2, layers[1], bn_fn, stride=2)
         self.layer3 = self._make_layer(block, self.inplanes * 4, layers[2], bn_fn, stride=2)
         self.layer4 = self._make_layer(block, self.inplanes * 8, layers[3], bn_fn, stride=2)
@@ -146,7 +146,7 @@ class ResNet(nn.Module):
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-            elif isinstance(m, nn.BatchNorm2d) or isinstance(m, TaskNorm):
+            elif isinstance(m, nn.BatchNorm2d):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
 
@@ -198,8 +198,8 @@ class FilmResNet(ResNet):
     ResNet object, and works with identical logic.
     """
 
-    def __init__(self, block, layers, bn_fn, initial_pool=True, conv1_kernel_size=7):
-        ResNet.__init__(self, block, layers, bn_fn, initial_pool, conv1_kernel_size)
+    def __init__(self, block, layers, initial_pool=True, conv1_kernel_size=7):
+        ResNet.__init__(self, block, layers, initial_pool, conv1_kernel_size)
         self.layers = layers
 
     def _get_adaptation_layer(self, generatable=False):
@@ -245,15 +245,14 @@ class FilmResNet(ResNet):
 
         return x
 
-def resnet18(pretrained=False, pretrained_model_path=None, batch_norm='basic', with_film=False, **kwargs):
+def resnet18(pretrained=False, pretrained_model_path=None, with_film=False, **kwargs):
     """
         Constructs a ResNet-18 model.
     """
-    nl = get_normalisation_layer(batch_norm)
     if with_film:
-        model = FilmResNet(BasicBlockFilm, [2, 2, 2, 2], nl, **kwargs)
+        model = FilmResNet(BasicBlockFilm, [2, 2, 2, 2], **kwargs)
     else:
-        model = ResNet(BasicBlock, [2, 2, 2, 2], nl, **kwargs)
+        model = ResNet(BasicBlock, [2, 2, 2, 2], **kwargs)
 
     if pretrained:
         ckpt_dict = torch.load(pretrained_model_path)
@@ -261,15 +260,14 @@ def resnet18(pretrained=False, pretrained_model_path=None, batch_norm='basic', w
 
     return model
 
-def resnet18_84(pretrained=False, pretrained_model_path=None, batch_norm='basic', with_film=False, **kwargs):
+def resnet18_84(pretrained=False, pretrained_model_path=None, with_film=False, **kwargs):
     """
         Constructs a ResNet-18 model for 84 x 84 images.
     """
-    nl = get_normalisation_layer(batch_norm)
     if with_film:
-        model = FilmResNet(BasicBlockFilm, [2, 2, 2, 2], nl, initial_pool=False, conv1_kernel_size=5, **kwargs)
+        model = FilmResNet(BasicBlockFilm, [2, 2, 2, 2], initial_pool=False, conv1_kernel_size=5, **kwargs)
     else:
-        model = ResNet(BasicBlock, [2, 2, 2, 2], nl, initial_pool=False, conv1_kernel_size=5, **kwargs)
+        model = ResNet(BasicBlock, [2, 2, 2, 2], initial_pool=False, conv1_kernel_size=5, **kwargs)
 
     if pretrained:
         ckpt_dict = torch.load(pretrained_model_path)

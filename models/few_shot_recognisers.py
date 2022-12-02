@@ -37,7 +37,6 @@ from data.utils import get_batch_indices
 from features import extractors
 from feature_adapters import FilmAdapter, NullAdapter
 from models.poolers import MeanPooler
-from models.normalisation_layers import TaskNorm
 from models.set_encoder import SetEncoder, NullSetEncoder
 from models.classifiers import LinearClassifier, VersaClassifier, PrototypicalClassifier, MahalanobisClassifier
 from utils.optim import init_optimizer
@@ -46,7 +45,7 @@ class FewShotRecogniser(nn.Module):
     """
     Generic few-shot classification model.
     """
-    def __init__(self, pretrained_extractor_path: str, feature_extractor: str, batch_normalisation: str,
+    def __init__(self, pretrained_extractor_path: str, feature_extractor: str,
         adapt_features: bool, classifier: str, clip_length: int, batch_size: int, learn_extractor: bool,
         feature_adaptation_method: str, use_two_gpus: bool, logit_scale: float=1.0):
         """
@@ -54,7 +53,6 @@ class FewShotRecogniser(nn.Module):
         """
         super(FewShotRecogniser, self).__init__()
 
-        self.batch_normalisation = batch_normalisation
         self.adapt_features = adapt_features
         self.learn_extractor = learn_extractor
         self.clip_length = clip_length
@@ -68,7 +66,6 @@ class FewShotRecogniser(nn.Module):
         self.feature_extractor = extractor_fn(
             pretrained=True if pretrained_extractor_path else False,
             pretrained_model_path=pretrained_extractor_path,
-            batch_norm=self.batch_normalisation,
             with_film=self.adapt_features
         )
         if not self.learn_extractor:
@@ -77,7 +74,7 @@ class FewShotRecogniser(nn.Module):
         # configure feature adapter
         if self.adapt_features:
             if self.feature_adaptation_method == 'generate':
-                self.set_encoder = SetEncoder(self.batch_normalisation)
+                self.set_encoder = SetEncoder()
                 adaptation_layer = self.feature_extractor._get_adaptation_layer(generatable=True)
             else:
                 self.set_encoder = NullSetEncoder()
@@ -266,15 +263,6 @@ class FewShotRecogniser(nn.Module):
         for param in self.feature_extractor.parameters():
             param.requires_grad = False
 
-    def _register_extra_parameters(self):
-        """
-        Function that registers TaskNorm layers as parameters
-        :return: Nothing.
-        """
-        for module in self.modules():
-            if isinstance(module, TaskNorm):
-                module.register_extra_weights()
-
     def _set_model_state(self, context=False):
         """
         Function that sets modules to appropriate train() or eval() states. Note, only modules that use batch norm (self.set_encoder, self.feature_extractor) and dropout (none) are affected.
@@ -283,12 +271,8 @@ class FewShotRecogniser(nn.Module):
         """
         self.set_encoder.train() # set encoder always in train mode (it processes context data)
         self.feature_extractor.eval()
-        if self.batch_normalisation == 'basic':
-            if self.learn_extractor and not self.test_mode:
-                self.feature_extractor.train() # compute batch statistics in extractor if unfrozen and train mode
-        elif self.batch_normalisation == 'task_norm':
-            if context:
-                self.feature_extractor.train() # compute batch statistics when processing context set
+        if self.learn_extractor and not self.test_mode:
+            self.feature_extractor.train() # compute batch statistics in extractor if unfrozen and train mode
 
     def set_test_mode(self, test_mode):
         """
@@ -310,13 +294,13 @@ class MultiStepFewShotRecogniser(FewShotRecogniser):
     """
     Few-shot classification model that is personalised in multiple forward-backward steps (e.g. MAML, FineTuner).
     """
-    def __init__(self, pretrained_extractor_path: str, feature_extractor: str, batch_normalisation: str,
+    def __init__(self, pretrained_extractor_path: str, feature_extractor: str,
         adapt_features: bool, classifier: str, clip_length: int, batch_size: int, learn_extractor: bool,
         feature_adaptation_method: str, use_two_gpus: bool, num_grad_steps: int, logit_scale: float=1.0):
         """
         Creates instance of MultiStepFewShotRecogniser.
         """
-        FewShotRecogniser.__init__(self, pretrained_extractor_path, feature_extractor, batch_normalisation,
+        FewShotRecogniser.__init__(self, pretrained_extractor_path, feature_extractor,
             adapt_features, classifier, clip_length, batch_size, learn_extractor,feature_adaptation_method, use_two_gpus, logit_scale)
 
         self.num_grad_steps = num_grad_steps
@@ -401,13 +385,13 @@ class SingleStepFewShotRecogniser(FewShotRecogniser):
     """
     Few-shot classification model that is personalised in a single forward step (e.g. CNAPs, ProtoNets).
     """
-    def __init__(self, pretrained_extractor_path: str, feature_extractor: str, batch_normalisation: str,
+    def __init__(self, pretrained_extractor_path: str, feature_extractor: str,
         adapt_features: bool, classifier: str, clip_length: int, batch_size: int, learn_extractor: bool,
         feature_adaptation_method: str, use_two_gpus: bool, num_lite_samples: int, logit_scale: float=1.0):
         """
         Creates instance of SingleStepFewShotRecogniser.
         """
-        FewShotRecogniser.__init__(self, pretrained_extractor_path, feature_extractor, batch_normalisation,
+        FewShotRecogniser.__init__(self, pretrained_extractor_path, feature_extractor,
             adapt_features, classifier, clip_length, batch_size, learn_extractor,feature_adaptation_method, use_two_gpus, logit_scale)
         self.num_lite_samples = num_lite_samples
 

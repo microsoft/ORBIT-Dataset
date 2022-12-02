@@ -459,12 +459,10 @@ class FilmEfficientNet(EfficientNet):
         x = x.view(x.size(0), -1)
         return x
     
-def efficientnetb0(pretrained=False, pretrained_model_path=None, batch_norm='basic', with_film=False, **override_params): 
+def efficientnetb0(pretrained=False, pretrained_model_path=None, with_film=False, **override_params): 
     """
         Constructs an EfficientNet-b0 model.
     """
-    assert batch_norm == 'basic', 'TaskNorm not implemented for EfficientNets'
-
     model_type = 'efficientnet-b0'
     
     blocks_args, global_params = get_model_params(model_type, override_params)

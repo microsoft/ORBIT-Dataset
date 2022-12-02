@@ -32,20 +32,17 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from models.normalisation_layers import TaskNorm
-
 class SetEncoder(nn.Module):
     """
     Simple set encoder implementing DeepSets (https://arxiv.org/abs/1703.06114). Used for modeling permutation-invariant representations on sets (mainly for extracting task-level embedding of context sets).
     """
-    def __init__(self, batch_normalisation):
+    def __init__(self):
         """
         Creates an instance of SetEncoder.
-        :param batch_normalisation: (str) If "basic", use standard BatchNorm layers, otherwise if "task_norm" use TaskNorm layers.
         :return: Nothing.
         """
         super(SetEncoder, self).__init__()
-        self.encoding_fn = SimplePrePoolNet(batch_normalisation)
+        self.encoding_fn = SimplePrePoolNet()
  
     def forward(self, x):
         """
@@ -84,35 +81,18 @@ class SimplePrePoolNet(nn.Module):
     """
     Simple network to encode elements of a set into low-dimensional embeddings. Used before pooling them to obtain a task-level embedding. A multi-layer convolutional network is used, similar to that in https://github.com/cambridge-mlg/cnaps.
     """
-    def __init__(self, batch_normalisation):
+    def __init__(self):
         """
         Creates an instance of SimplePrePoolNet.
-        :param batch_normalisation: (str) If "basic", use standard BatchNorm layers, otherwise if "task_norm" use TaskNorm layers.
         :return: Nothing.
         """
         super(SimplePrePoolNet, self).__init__()
-        if batch_normalisation == "task_norm":
-            self.layer1 = self._make_conv2d_layer_task_norm(3, 64)
-            self.layer2 = self._make_conv2d_layer_task_norm(64, 64)
-            self.layer3 = self._make_conv2d_layer_task_norm(64, 64)
-            self.layer4 = self._make_conv2d_layer_task_norm(64, 64)
-            self.layer5 = self._make_conv2d_layer_task_norm(64, 64)
-        else:
-            self.layer1 = self._make_conv2d_layer(3, 64)
-            self.layer2 = self._make_conv2d_layer(64, 64)
-            self.layer3 = self._make_conv2d_layer(64, 64)
-            self.layer4 = self._make_conv2d_layer(64, 64)
-            self.layer5 = self._make_conv2d_layer(64, 64)
+        self.layer1 = self._make_conv2d_layer(3, 64)
+        self.layer2 = self._make_conv2d_layer(64, 64)
+        self.layer3 = self._make_conv2d_layer(64, 64)
+        self.layer4 = self._make_conv2d_layer(64, 64)
+        self.layer5 = self._make_conv2d_layer(64, 64)
         self.avgpool = nn.AdaptiveAvgPool2d((1,1))
-
-    @staticmethod
-    def _make_conv2d_layer_task_norm(in_maps, out_maps):
-        return nn.Sequential(
-            nn.Conv2d(in_maps, out_maps, kernel_size=3, stride=1, padding=1),
-            TaskNorm(out_maps),
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=2, ceil_mode=False)
-        )
 
     @staticmethod
     def _make_conv2d_layer(in_maps, out_maps, kernel_size=3):
@@ -122,7 +102,7 @@ class SimplePrePoolNet(nn.Module):
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2, stride=2, ceil_mode=False)
         )
-
+    
     def _flatten(self, x):
         """
         Function that flattens tensor into 4 dimensions if x.dim() >= 5.

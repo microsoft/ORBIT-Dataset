@@ -38,8 +38,6 @@ def parse_args(learner='default'):
                         help="Classifier head to use (default: linear).")
     parser.add_argument("--logit_scale", type=float, default=1.0,
                         help="Scale factor for logits (default: 1.0).")
-    parser.add_argument("--batch_normalisation", choices=["basic",  "task_norm"], default="basic",
-                        help="Normalisation layer to use (default: basic).")
 
     # data parameters
     parser.add_argument("--train_way_method", type=str, default="random", choices=["random", "max"],
