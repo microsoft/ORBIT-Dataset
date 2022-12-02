@@ -10,9 +10,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_path", required=True, type=str, help="Path to ORBIT dataset root (either unfiltered or benchmark)")
     parser.add_argument("--combine_modes", action="store_true", help="Summarize stats across train/validation/test folders")
+    parser.add_argument("--no_modes", action="store_true", help="Root has no train/validation/test splits (e.g. for unfiltered ORBIT dataset)")
     args = parser.parse_args()
 
-    modes = ['train', 'validation', 'test']
+    modes = ['train', 'validation', 'test'] if not args.no_modes else ['']
     if args.combine_modes:
         num_videos_by_user, num_frames_by_user = [], []
         for mode in modes:
