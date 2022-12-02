@@ -313,7 +313,7 @@ class Learner:
                             'epsilon' : self.args.personalize_epsilon
                             }
             finetuner.personalise(context_clips, context_labels, learning_args, ops_counter=self.ops_counter)
-            self.ops_counter.log_time(time.time() - t1)
+            self.ops_counter.log_time(time.time() - t1, 'personalise')
             # add task's ops to self.ops_counter
             self.ops_counter.task_complete()
 
@@ -324,7 +324,9 @@ class Learner:
                 for video_frames, video_paths, video_label in video_iterator:
                     video_clips = attach_frame_history(video_frames, self.args.clip_length)
                     num_clips = len(video_clips)
+                    t1 = time.time()
                     video_logits = finetuner.predict(video_clips)
+                    self.ops_counter.log_time((time.time() - t1)/float(num_clips), 'inference')
                     self.test_evaluator.append_video(video_logits, video_label, video_paths)
                     num_target_clips += num_clips
 

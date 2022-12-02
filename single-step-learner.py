@@ -119,7 +119,7 @@ class Learner:
         self.model = SingleStepFewShotRecogniser(
                         self.args.pretrained_extractor_path, self.args.feature_extractor,
                         self.args.adapt_features, self.args.classifier, self.args.clip_length, self.args.batch_size,
-                        self.args.learn_extractor, self.args.feature_adaptation_method, self.args.use_two_gpus, self.args.num_lite_samples, self.args.logit_scale)
+                        self.args.learn_extractor, self.args.feature_adaptation_method, self.args.use_two_gpus, self.args.num_lite_samples, self.args.logit_scale
                     )
         self.model._set_device(self.device)
         self.model._send_to_device()
@@ -312,7 +312,7 @@ class Learner:
 
                 t1 = time.time()
                 self.model.personalise(context_clips, context_labels, ops_counter=self.ops_counter)
-                self.ops_counter.log_time(time.time() - t1)
+                self.ops_counter.log_time(time.time() - t1, 'personalise')
 
                 # loop through target videos for the current task
                 num_target_clips = 0
@@ -320,7 +320,9 @@ class Learner:
                 for video_frames, video_paths, video_label in video_iterator:
                     video_clips = attach_frame_history(video_frames, self.args.clip_length)
                     num_clips = len(video_clips)
+                    t1 = time.time()
                     video_logits = self.model.predict(video_clips)
+                    self.ops_counter.log_time((time.time() - t1)/float(num_clips), 'inference')
                     self.test_evaluator.append_video(video_logits, video_label, video_paths)
                     num_target_clips += num_clips
 
