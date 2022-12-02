@@ -9,22 +9,11 @@ import numpy as np
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_path", required=True, type=str, help="Path to ORBIT dataset root (either unfiltered or benchmark)")
-    parser.add_argument("--with_modes", action="store_true", help="ORBIT dataset root has train/validation/test folders")
     parser.add_argument("--combine_modes", action="store_true", help="Summarize stats across train/validation/test folders")
     args = parser.parse_args()
 
-    modes = ['train', 'validation', 'test'] if args.with_modes else ['']
-    if not args.combine_modes:
-        for mode in modes:
-            num_videos_by_user, num_frames_by_user, video_types = get_tallies_by_user(os.path.join(args.data_path, mode))
-
-            count_stats_by_type, num_frames_stats_by_type = {}, {}
-            for video_type in video_types:
-                count_stats_by_type[video_type]  = compute_count_stats(num_videos_by_user, video_type)
-                num_frames_stats_by_type[video_type] = compute_num_frames_stats(num_frames_by_user, video_type)
-
-            print_stats_as_table(mode, len(num_videos_by_user), num_frames_stats_by_type, count_stats_by_type)
-    else:
+    modes = ['train', 'validation', 'test']
+    if args.combine_modes:
         num_videos_by_user, num_frames_by_user = [], []
         for mode in modes:
             nv, nf, video_types = get_tallies_by_user(os.path.join(args.data_path, mode))
@@ -37,6 +26,16 @@ def main():
             num_frames_stats_by_type[video_type] = compute_num_frames_stats(num_frames_by_user, video_type)
 
         print_stats_as_table(mode, len(num_videos_by_user), num_frames_stats_by_type, count_stats_by_type)
+    else:
+        for mode in modes:
+            num_videos_by_user, num_frames_by_user, video_types = get_tallies_by_user(os.path.join(args.data_path, mode))
+
+            count_stats_by_type, num_frames_stats_by_type = {}, {}
+            for video_type in video_types:
+                count_stats_by_type[video_type]  = compute_count_stats(num_videos_by_user, video_type)
+                num_frames_stats_by_type[video_type] = compute_num_frames_stats(num_frames_by_user, video_type)
+
+            print_stats_as_table(mode, len(num_videos_by_user), num_frames_stats_by_type, count_stats_by_type)
 
 def compute_num_frames_stats(num_frames_by_user, video_type):
     
@@ -152,19 +151,19 @@ def print_stats_as_table(mode, num_users, num_frames_stats, count_stats):
     counts_stats is dict with keys as video_type and values as dict of statistics from compute_count_stats()
     """
 
-    cr = "\\\ \n"
-    tb = " & "
+    cr = "\n"
+    tb = "\t"
     i = "{:d}"
     f = "{:.1f}"
     FPS=30
     video_types = sorted(num_frames_stats.keys())
 
-    table = tb + "\#objects" + tb + "\#videos" + tb + "\multicolumn{3}{c}{\#videos per object}" + tb + "\multicolumn{3}{c}{\#seconds}" + tb + "\multicolumn{3}{c}{\#frames}" + cr
-    table += tb + tb + tb + "mean/std" + tb + "25/75p" + tb + "min/max" + tb + "mean/std" + tb + "25/75p" + tb + "min/max" + cr
+    table = (tb + "#objects" + tb + "#videos" + tb + "#videos per object" + tb + "#seconds" + tb + "#frames" + cr).expandtabs(20)
+    table += (tb + tb + tb + "mean/std" + tb + "25/75p" + tb + "min/max" + tb + "mean/std" + tb + "25/75p" + tb + "min/max" + cr).expandtabs(20)
     for video_type in video_types:
         c_stats = count_stats[video_type]
         f_stats = num_frames_stats[video_type]
-        table += video_type + tb + \
+        table += (video_type + tb + \
                 i.format(c_stats["num_objects"]) + tb + \
                 i.format(c_stats["num_videos"]) + tb + \
                 f.format(c_stats["num_videos_per_object_stats"][0]) + "/" + f.format(c_stats["num_videos_per_object_stats"][1]) + tb + \
@@ -172,12 +171,12 @@ def print_stats_as_table(mode, num_users, num_frames_stats, count_stats):
                 f.format(c_stats["num_videos_per_object_stats"][4]) + "/" + f.format(c_stats["num_videos_per_object_stats"][5]) + tb + \
                 f.format(f_stats["num_frames_per_video_stats"][0]) + "/" + f.format(f_stats["num_frames_per_video_stats"][1]) + tb + \
                 f.format(f_stats["num_frames_per_video_stats"][2]) + "/" + f.format(f_stats["num_frames_per_video_stats"][3]) + tb + \
-                f.format(f_stats["num_frames_per_video_stats"][4]) + "/" + f.format(f_stats["num_frames_per_video_stats"][5]) + cr
+                f.format(f_stats["num_frames_per_video_stats"][4]) + "/" + f.format(f_stats["num_frames_per_video_stats"][5]) + cr).expandtabs(20)
     
     for video_type in video_types:
         c_stats = count_stats[video_type]
         f_stats = num_frames_stats[video_type]
-        table += video_type + " per user" + tb + \
+        table += (video_type + " per user" + tb + \
                 f.format(c_stats["num_objects_per_user_stats"][0]) + "/"  + f.format(c_stats["num_objects_per_user_stats"][1]) + tb + \
                 f.format(c_stats["num_videos_per_user_stats"][0]) + "/" + f.format(c_stats["num_videos_per_user_stats"][1]) + tb + \
                 f.format(c_stats["num_videos_per_object_per_user_stats"][0]) + "/" + f.format(c_stats["num_videos_per_object_per_user_stats"][1]) + tb + \
@@ -185,12 +184,12 @@ def print_stats_as_table(mode, num_users, num_frames_stats, count_stats):
                 f.format(c_stats["num_videos_per_object_per_user_stats"][4]) + "/" + f.format(c_stats["num_videos_per_object_per_user_stats"][5]) + tb + \
                 f.format(f_stats["num_frames_per_video_per_user_stats"][0]) + "/" + f.format(f_stats["num_frames_per_video_per_user_stats"][1]) + tb + \
                 f.format(f_stats["num_frames_per_video_per_user_stats"][2]) + "/" + f.format(f_stats["num_frames_per_video_per_user_stats"][3]) + tb + \
-                f.format(f_stats["num_frames_per_video_per_user_stats"][4]) + "/" + f.format(f_stats["num_frames_per_video_per_user_stats"][5]) + cr                
+                f.format(f_stats["num_frames_per_video_per_user_stats"][4]) + "/" + f.format(f_stats["num_frames_per_video_per_user_stats"][5]) + cr).expandtabs(20)
     
-    print("--"*10)
+    print("--"*100)
     total_frames_by_type = "".join( "- # {:} frames: {:}".format(video_type, num_frames_stats[video_type]["total_frames"]) for video_type in num_frames_stats.keys())
     print("{:s} stats - {:d} users {:}".format(mode, num_users, total_frames_by_type))
-    print("--"*10)
+    print("--"*100)
     print(table)
 
 def get_tallies_by_user(path):

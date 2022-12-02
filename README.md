@@ -4,7 +4,7 @@ This repository contains code for the following two papers:
 - [ORBIT: A Real-World Few-Shot Dataset for Teachable Object Recognition](https://arxiv.org/abs/2104.03841). Code is provided to download and prepare the ORBIT benchmark dataset, and train/test 4 few-shot learning models on this dataset (at 84x84 frames). 
 - [Memory Efficient Meta-Learning with Large Images](https://arxiv.org/abs/2107.01105). Code is provided for Large Image and Task Episodic (LITE) training, enabling the models to be trained on large (224x224) frames on a single GPU.
 
-The code was authored by Daniela Massiceti and built using PyTorch 1.5+ and Python 3.7.
+The code is authored by Daniela Massiceti and built using PyTorch 1.11+ and Python 3.7.
 
 <table>
   <tr>
@@ -34,7 +34,7 @@ The code was authored by Daniela Massiceti and built using PyTorch 1.5+ and Pyth
    conda activate orbit-dataset
 
    # if using pip
-   # pip install -r requirements.txt
+   pip install -r requirements.txt
    ```
 
 # Download ORBIT Benchmark Dataset
@@ -49,10 +49,10 @@ Alternatively, the 224x224 train/validation/test ZIPs can be manually downloaded
    
 The following script summarizes the dataset statistics:
 ```
-python3 scripts/summarize_dataset.py --data_path path/to/save/dataset/orbit_benchmark_<FRAME_SIZE> --with_modes 
+python3 scripts/summarize_dataset.py --data_path path/to/save/dataset/orbit_benchmark_<FRAME_SIZE> 
 # to aggregate stats across train, validation, and test collectors, add --combine_modes
 ```
-The Jupyter notebook `scripts/plot_dataset.ipynb` can be used to plot bar charts summarizing the dataset (uses Plotly).
+These should match the values in Table 2 (`combine_modes=True`) and Table A.2 (`combine_modes=False`) in the original dataset paper. The Jupyter notebook `scripts/plot_dataset.ipynb` can be used to plot bar charts summarizing the dataset (uses Plotly). These should match Figure 2 (`combine_modes=True`) and Figure A.3/A.4 (`combine_modes=False`) in the original dataset paper.
 
 # Training & testing models on ORBIT
 
