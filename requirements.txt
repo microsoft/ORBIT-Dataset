@@ -1,6 +1,6 @@
 torch==1.11.0
 torchvision==0.12.0
-thop==0.1.1.post2207130030
+thop==0.1.1.post2209072238
 plotly==4.8.1
 tqdm==4.62.3
 timm==0.6.7
