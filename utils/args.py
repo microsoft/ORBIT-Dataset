@@ -14,7 +14,7 @@ def parse_args(learner='default'):
     parser = argparse.ArgumentParser()
 
     # default parameters
-    parser.add_argument("--checkpoint_dir", default='./checkpoint', help="Directory to save checkpoint to.")
+    parser.add_argument("--checkpoint_dir", default='./checkpoints', help="Directory to save checkpoints to.")
     parser.add_argument("--data_path", required=True, help="Path to ORBIT root directory.")
     parser.add_argument("--test_set", default='test', choices=['validation', 'test'],
                         help="Test set to sample test tasks.")
@@ -68,17 +68,17 @@ def parse_args(learner='default'):
                         help="Video type for target set (default: clutter).")
     parser.add_argument("--subsample_factor", type=int, default=10,
                         help="Factor to subsample video by if sampling clip uniformly (default: 10).")
-    parser.add_argument("--train_context_clip_method", type=str, default='random', choices=['random', 'random_200', 'max', 'uniform', 'uniform_max', 'uniform_random_start'],
-                        help="Method to sample clips per context video for a train task (default: random).")
+    parser.add_argument("--train_context_clip_method", type=str, default='uniform', choices=['random', 'random_200', 'max', 'uniform'],
+                        help="Method to sample clips per context video for a train task (default: uniform).")
     parser.add_argument("--train_target_clip_method", type=str, default='random', choices=['random', 'random_200', 'max'],
                         help="Method to sample clips per target video for a train task (default: random).")
-    parser.add_argument("--test_context_clip_method", type=str, default='random', choices=['random', 'random_200', 'max', 'uniform', 'uniform_max', 'uniform_random_start'],
+    parser.add_argument("--test_context_clip_method", type=str, default='random', choices=['random', 'random_200', 'max', 'uniform'],
                         help="Method to sample clips per context video for a test/validation task (default: random).")
     parser.add_argument("--test_target_clip_method", type=str, default='max', choices=['random', 'random_200', 'max'],
                         help="Method to sample clips per target video for a test/validation task (default: max).")
     parser.add_argument("--clip_length", type=int, default=1,
                         help="Number of frames to sample per clip (default: 1).")
-    parser.add_argument("--frame_size", type=int, default=224, choices=[84, 224],
+    parser.add_argument("--frame_size", type=int, default=224, choices=[224],
                         help="Frame size (default: 224).")
     parser.add_argument("--annotations_to_load", nargs='+', type=str, default=[], choices=FRAME_ANNOTATION_OPTIONS+BOUNDING_BOX_OPTIONS,
                         help="Annotations to load per frame (default: None).")
@@ -200,12 +200,6 @@ def verify_args(learner, args):
 
     if 'train' in args.mode and not args.learn_extractor and not args.adapt_features:
         sys.exit('{:}error: at least one of "--learn_extractor" and "--adapt_features" must be used during training{:}'.format(cred, cend))
-
-    if args.frame_size == 84:
-        if 'resnet18' in args.feature_extractor:
-            args.feature_extractor = "{:}_84".format(args.feature_extractor)
-        else:
-            sys.exit('{:}error: --frame_size 84 not implemented for {:}{:}'.format(cred, args.feature_extractor, cend))
 
     if learner == 'multi-step-learner':
         if args.with_lite:

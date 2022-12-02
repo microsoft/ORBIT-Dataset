@@ -12,7 +12,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_path", required=True, type=str, help="Path to ORBIT benchmark dataset root saved by modes")
     parser.add_argument("--save_path", required=True, type=str, help="Path to save resized dataset")
-    parser.add_argument("--size", type=int, default=84, help="Target image size.")
+    parser.add_argument("--size", type=int, default=224, help="Target image size.")
     parser.add_argument("--nthreads", type=int, default=12, help="Number of threads.")
     args = parser.parse_args()
 

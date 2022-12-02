@@ -128,10 +128,10 @@ class BasicBlockFilm(nn.Module):
 
 
 class ResNet(nn.Module):
-    def __init__(self, block, layers, initial_pool=True, conv1_kernel_size=7):
+    def __init__(self, block, layers, conv1_kernel_size=7):
         super(ResNet, self).__init__()
         bn_fn = nn.BatchNorm2d
-        self.initial_pool = initial_pool # False for 84x84
+        self.initial_pool = True
         self.inplanes = self.curr_planes = 64
         self.conv1 = nn.Conv2d(3, self.curr_planes, kernel_size=conv1_kernel_size, stride=2, padding=1, bias=False)
         self.bn1 = bn_fn(self.curr_planes)
@@ -253,21 +253,6 @@ def resnet18(pretrained=False, pretrained_model_path=None, with_film=False, **kw
         model = FilmResNet(BasicBlockFilm, [2, 2, 2, 2], **kwargs)
     else:
         model = ResNet(BasicBlock, [2, 2, 2, 2], **kwargs)
-
-    if pretrained:
-        ckpt_dict = torch.load(pretrained_model_path)
-        model.load_state_dict(ckpt_dict['state_dict'])
-
-    return model
-
-def resnet18_84(pretrained=False, pretrained_model_path=None, with_film=False, **kwargs):
-    """
-        Constructs a ResNet-18 model for 84 x 84 images.
-    """
-    if with_film:
-        model = FilmResNet(BasicBlockFilm, [2, 2, 2, 2], initial_pool=False, conv1_kernel_size=5, **kwargs)
-    else:
-        model = ResNet(BasicBlock, [2, 2, 2, 2], initial_pool=False, conv1_kernel_size=5, **kwargs)
 
     if pretrained:
         ckpt_dict = torch.load(pretrained_model_path)
