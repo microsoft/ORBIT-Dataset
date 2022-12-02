@@ -137,7 +137,7 @@ class ResNet(nn.Module):
         self.bn1 = bn_fn(self.curr_planes)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        self.layer1 = self._make_layer(block, self.inplanes, layers[0], nn.Batch
+        self.layer1 = self._make_layer(block, self.inplanes, layers[0], bn_fn)
         self.layer2 = self._make_layer(block, self.inplanes * 2, layers[1], bn_fn, stride=2)
         self.layer3 = self._make_layer(block, self.inplanes * 4, layers[2], bn_fn, stride=2)
         self.layer4 = self._make_layer(block, self.inplanes * 8, layers[3], bn_fn, stride=2)
