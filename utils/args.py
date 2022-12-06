@@ -68,14 +68,14 @@ def parse_args(learner='default'):
                         help="Video type for target set (default: clutter).")
     parser.add_argument("--subsample_factor", type=int, default=10,
                         help="Factor to subsample video by if sampling clip uniformly (default: 10).")
-    parser.add_argument("--train_context_clip_method", type=str, default='uniform', choices=['random', 'random_200', 'max', 'uniform'],
+    parser.add_argument("--train_context_clip_method", type=str, default='random', choices=['random', 'random_200', 'max', 'uniform'],
                         help="Method to sample clips per context video for a train task (default: uniform).")
     parser.add_argument("--train_target_clip_method", type=str, default='random', choices=['random', 'random_200', 'max'],
                         help="Method to sample clips per target video for a train task (default: random).")
     parser.add_argument("--test_context_clip_method", type=str, default='random', choices=['random', 'random_200', 'max', 'uniform'],
                         help="Method to sample clips per context video for a test/validation task (default: random).")
-    parser.add_argument("--test_target_clip_method", type=str, default='max', choices=['random', 'random_200', 'max'],
-                        help="Method to sample clips per target video for a test/validation task (default: max).")
+    parser.add_argument("--test_target_clip_method", type=str, default='random_200', choices=['random', 'random_200', 'max'],
+                        help="Method to sample clips per target video for a test/validation task (default: random_200).")
     parser.add_argument("--clip_length", type=int, default=1,
                         help="Number of frames to sample per clip (default: 1).")
     parser.add_argument("--frame_size", type=int, default=224, choices=[224],
@@ -90,8 +90,8 @@ def parse_args(learner='default'):
                         help="Sample train tasks as user-centric or object-centric (default: user_centric).")
     parser.add_argument("--num_train_tasks", type=int, default=50,
                         help="Number of train tasks per user (if train_task_type = user_centric) or per object (if train_task_type = object_centric) per epoch (default: 50).")
-    parser.add_argument("--num_test_tasks", type=int, default=50,
-                        help="Number of validation/test tasks per user (default: 50).")
+    parser.add_argument("--num_test_tasks", type=int, default=25,
+                        help="Number of validation/test tasks per user (default: 25).")
 
     # training parameters
     parser.add_argument("--seed", type=int, default=1991,
@@ -106,8 +106,6 @@ def parse_args(learner='default'):
                         help="Number of context clips per task to back-propagate with LITE training (default: 8)")
     parser.add_argument("--gpu", type=int, default=0,
                         help="gpu id to use (default: 0, cpu: <0)")
-    parser.add_argument("--use_two_gpus", dest="use_two_gpus", default=False, action="store_true",
-                        help="If True, do model parallelism over 2 GPUs.")
     parser.add_argument("--print_by_step", action="store_true",
                         help="Print training by step (otherwise print by epoch).")
 

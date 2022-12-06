@@ -52,18 +52,17 @@ class SetEncoder(nn.Module):
         """
         return self.encoding_fn(x)
 
-    def aggregate(self, x, reduction='mean', switch_device=False):
+    def aggregate(self, x, reduction='mean'):
         """
         Function that aggregates the encoded elements in x.
         :param x: (torch.Tensor) Set of encoded elements (i.e. from forward()).
         :param reduction: (str) If 'mean', average the encoded elements in x, otherwise do not average.
-        :param switch_device: (bool) If True, move output to second GPU.
         :return: (torch.Tensor) Mean representation of the set as a single vector if reduction = 'mean', otherwise as a set of encoded elements.
         """
         x = torch.cat(x, dim=0)
         if reduction == 'mean':
             x = self.mean_pool(x)
-        return x.cuda(1) if switch_device else x
+        return x
 
     def mean_pool(self, x):
         """
@@ -135,7 +134,7 @@ class NullSetEncoder(nn.Module):
     def forward(self, x):
         return None
 
-    def aggregate(self, x, reduction='mean', switch_device=False):
+    def aggregate(self, x, reduction='mean'):
         return None
     
     def mean_pool(self, x):

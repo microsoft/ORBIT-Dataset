@@ -38,7 +38,7 @@ from features import extractors
 from feature_adapters import FilmAdapter, NullAdapter
 from models.poolers import MeanPooler
 from models.set_encoder import SetEncoder, NullSetEncoder
-from models.classifiers import LinearClassifier, VersaClassifier, PrototypicalClassifier, MahalanobisClassifier
+from models.classifier_heads import LinearClassifier, VersaClassifier, PrototypicalClassifier, MahalanobisClassifier
 from utils.optim import init_optimizer
 
 class FewShotRecogniser(nn.Module):
@@ -47,7 +47,7 @@ class FewShotRecogniser(nn.Module):
     """
     def __init__(self, pretrained_extractor_path: str, feature_extractor: str,
         adapt_features: bool, classifier: str, clip_length: int, batch_size: int, learn_extractor: bool,
-        feature_adaptation_method: str, use_two_gpus: bool, logit_scale: float=1.0):
+        feature_adaptation_method: str, logit_scale: float=1.0):
         """
         Creates instance of FewShotRecogniser.
         """
@@ -58,7 +58,6 @@ class FewShotRecogniser(nn.Module):
         self.clip_length = clip_length
         self.batch_size = batch_size
         self.feature_adaptation_method = feature_adaptation_method
-        self.use_two_gpus = use_two_gpus
         self.logit_scale = logit_scale
 
         # configure feature extractor
@@ -116,16 +115,6 @@ class FewShotRecogniser(nn.Module):
         :return: Nothing.
         """
         self.to(self.device)
-        if self.use_two_gpus:
-            self._distribute_model()
-
-    def _distribute_model(self):
-        """
-        Function that moves the feature extractor and feature adapter to the second GPU.
-        :return: Nothing.
-        """
-        self.feature_extractor.cuda(1)
-        self.feature_adapter.cuda(1)
 
     def _get_features(self, clips, feature_adapter_params, ops_counter=None, context=False):
         """
@@ -137,11 +126,7 @@ class FewShotRecogniser(nn.Module):
         :return: (torch.Tensor) Adapted frame features flattened across all clips.
         """
         self._set_model_state(context)
-        if self.use_two_gpus:
-            clips = clips.cuda(1)
-            features = self.feature_extractor(clips, feature_adapter_params).cuda(0)
-        else:
-            features = self.feature_extractor(clips, feature_adapter_params)
+        features = self.feature_extractor(clips, feature_adapter_params)
 
         if ops_counter:
             ops_counter.compute_macs(self.feature_extractor, clips, feature_adapter_params)
@@ -169,11 +154,7 @@ class FewShotRecogniser(nn.Module):
                 batch_clips = batch_clips.flatten(end_dim=1)
 
             batch_clips = batch_clips.to(self.device, non_blocking=True)
-            if self.use_two_gpus:
-                batch_clips = batch_clips.cuda(1)
-                batch_features = self.feature_extractor(batch_clips, feature_adapter_params).cuda(0)
-            else:
-                batch_features = self.feature_extractor(batch_clips, feature_adapter_params)
+            batch_features = self.feature_extractor(batch_clips, feature_adapter_params)
 
             if ops_counter:
                 if self.adapt_features:
@@ -212,7 +193,7 @@ class FewShotRecogniser(nn.Module):
         if ops_counter:
             ops_counter.compute_macs(self.set_encoder, context_clips)
 
-        return self.set_encoder.aggregate(reps, reduction=reduction, switch_device=self.use_two_gpus)
+        return self.set_encoder.aggregate(reps, reduction=reduction)
 
     def _get_task_embedding_in_batches(self, context_clips, ops_counter=None, reduction='mean'):
         """
@@ -240,7 +221,7 @@ class FewShotRecogniser(nn.Module):
 
             reps.append(batch_reps)
 
-        return self.set_encoder.aggregate(reps, reduction=reduction, switch_device=self.use_two_gpus)
+        return self.set_encoder.aggregate(reps, reduction=reduction)
 
     def _pool_features(self, features, ops_counter=None):
         """
@@ -296,12 +277,12 @@ class MultiStepFewShotRecogniser(FewShotRecogniser):
     """
     def __init__(self, pretrained_extractor_path: str, feature_extractor: str,
         adapt_features: bool, classifier: str, clip_length: int, batch_size: int, learn_extractor: bool,
-        feature_adaptation_method: str, use_two_gpus: bool, num_grad_steps: int, logit_scale: float=1.0):
+        feature_adaptation_method: str, num_grad_steps: int, logit_scale: float=1.0):
         """
         Creates instance of MultiStepFewShotRecogniser.
         """
         FewShotRecogniser.__init__(self, pretrained_extractor_path, feature_extractor,
-            adapt_features, classifier, clip_length, batch_size, learn_extractor,feature_adaptation_method, use_two_gpus, logit_scale)
+            adapt_features, classifier, clip_length, batch_size, learn_extractor,feature_adaptation_method, logit_scale)
 
         self.num_grad_steps = num_grad_steps
     
@@ -341,7 +322,7 @@ class MultiStepFewShotRecogniser(FewShotRecogniser):
                 batch_context_features = self._pool_features(batch_context_features, ops_counter)
                 batch_context_logits = self.classifier.predict(batch_context_features, ops_counter)
                 loss = loss_fn(batch_context_logits, batch_context_labels)
-                loss += 0.001 * self.feature_adapter.regularization_term(switch_device=self.use_two_gpus)
+                loss += 0.001 * self.feature_adapter.regularization_term()
                 loss *= batch_len/batch_context_set_size
                 loss.backward()
 
@@ -387,12 +368,12 @@ class SingleStepFewShotRecogniser(FewShotRecogniser):
     """
     def __init__(self, pretrained_extractor_path: str, feature_extractor: str,
         adapt_features: bool, classifier: str, clip_length: int, batch_size: int, learn_extractor: bool,
-        feature_adaptation_method: str, use_two_gpus: bool, num_lite_samples: int, logit_scale: float=1.0):
+        feature_adaptation_method: str, num_lite_samples: int, logit_scale: float=1.0):
         """
         Creates instance of SingleStepFewShotRecogniser.
         """
         FewShotRecogniser.__init__(self, pretrained_extractor_path, feature_extractor,
-            adapt_features, classifier, clip_length, batch_size, learn_extractor,feature_adaptation_method, use_two_gpus, logit_scale)
+            adapt_features, classifier, clip_length, batch_size, learn_extractor,feature_adaptation_method, logit_scale)
         self.num_lite_samples = num_lite_samples
 
     def personalise(self, context_clips, context_labels, ops_counter=None):

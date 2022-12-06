@@ -117,7 +117,7 @@ class Learner:
         model = MultiStepFewShotRecogniser(
                     self.args.pretrained_extractor_path, self.args.feature_extractor,
                     self.args.adapt_features, self.args.classifier, self.args.clip_length, self.args.batch_size,
-                    self.args.learn_extractor, self.args.feature_adaptation_method, self.args.use_two_gpus, self.args.logit_scale
+                    self.args.learn_extractor, self.args.feature_adaptation_method, self.args.logit_scale
                 )
         model._set_device(self.device)
         model._send_to_device()
@@ -211,7 +211,7 @@ class Learner:
         self.train_evaluator.update_stats(joint_context_logits, joint_context_labels) 
 
         task_loss = self.loss(joint_context_logits, joint_context_labels) / self.args.tasks_per_batch
-        task_loss += 0.001 * self.model.feature_adapter.regularization_term(switch_device=self.args.use_two_gpus)
+        task_loss += 0.001 * self.model.feature_adapter.regularization_term()
         task_loss.backward()
 
         return task_loss

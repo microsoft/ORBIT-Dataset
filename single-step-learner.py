@@ -119,7 +119,7 @@ class Learner:
         self.model = SingleStepFewShotRecogniser(
                         self.args.pretrained_extractor_path, self.args.feature_extractor,
                         self.args.adapt_features, self.args.classifier, self.args.clip_length, self.args.batch_size,
-                        self.args.learn_extractor, self.args.feature_adaptation_method, self.args.use_two_gpus, self.args.num_lite_samples, self.args.logit_scale
+                        self.args.learn_extractor, self.args.feature_adaptation_method, self.args.num_lite_samples, self.args.logit_scale
                     )
         self.model._set_device(self.device)
         self.model._send_to_device()
@@ -200,7 +200,7 @@ class Learner:
         self.train_evaluator.update_stats(target_logits, target_labels)
         
         task_loss = self.loss(target_logits, target_labels) / self.args.tasks_per_batch
-        task_loss += 0.001 * self.model.feature_adapter.regularization_term(switch_device=self.args.use_two_gpus) 
+        task_loss += 0.001 * self.model.feature_adapter.regularization_term() 
         task_loss.backward(retain_graph=False)        
        
         # reset task's params
@@ -230,7 +230,7 @@ class Learner:
 
             loss_scaling = len(context_labels) / (self.args.num_lite_samples * self.args.tasks_per_batch)
             batch_loss = loss_scaling * self.loss(batch_target_logits, batch_target_labels)
-            batch_loss += 0.001 * self.model.feature_adapter.regularization_term(switch_device=self.args.use_two_gpus)
+            batch_loss += 0.001 * self.model.feature_adapter.regularization_term()
             batch_loss.backward(retain_graph=False)
             task_loss += batch_loss.detach()
 
