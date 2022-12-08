@@ -37,7 +37,7 @@ import torch.backends.cudnn as cudnn
 
 from data.dataloaders import DataLoader
 from data.utils import get_batch_indices, unpack_task, attach_frame_history
-from models.few_shot_recognisers import SingleStepFewShotRecogniser
+from model.few_shot_recognisers import SingleStepFewShotRecogniser
 from utils.args import parse_args
 from utils.ops_counter import OpsCounter
 from utils.optim import cross_entropy, init_optimizer, init_scheduler, get_curr_learning_rates

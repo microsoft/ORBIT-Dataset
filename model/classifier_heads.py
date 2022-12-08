@@ -33,7 +33,7 @@ import torch.nn.functional as F
 from abc import ABC, abstractmethod
 from collections import OrderedDict
 
-from models.mlps import DenseResidualBlock
+from model.mlps import DenseResidualBlock
 
 class LinearClassifier(nn.Module):
     """

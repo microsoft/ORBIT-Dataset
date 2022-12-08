@@ -36,9 +36,9 @@ from argparse import Namespace
 from data.utils import get_batch_indices
 from features import extractors
 from feature_adapters import FilmAdapter, NullAdapter
-from models.poolers import MeanPooler
-from models.set_encoder import SetEncoder, NullSetEncoder
-from models.classifier_heads import LinearClassifier, VersaClassifier, PrototypicalClassifier, MahalanobisClassifier
+from model.poolers import MeanPooler
+from model.set_encoder import SetEncoder, NullSetEncoder
+from model.classifier_heads import LinearClassifier, VersaClassifier, PrototypicalClassifier, MahalanobisClassifier
 from utils.optim import init_optimizer
 
 class FewShotRecogniser(nn.Module):
