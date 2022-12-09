@@ -86,8 +86,10 @@ def parse_args(learner='default'):
                         help="Sample train tasks as user-centric or object-centric (default: user_centric).")
     parser.add_argument("--num_train_tasks", type=int, default=50,
                         help="Number of train tasks per user (if train_task_type = user_centric) or per object (if train_task_type = object_centric) per epoch (default: 50).")
-    parser.add_argument("--num_test_tasks", type=int, default=25,
-                        help="Number of validation/test tasks per user (default: 25).")
+    parser.add_argument("--num_val_tasks", type=int, default=15,
+                        help="Number of validation tasks per user (default: 15).")
+    parser.add_argument("--num_test_tasks", type=int, default=50,
+                        help="Number of test tasks per user (default: 50).")
 
     # training parameters
     parser.add_argument("--seed", type=int, default=1991,

@@ -47,7 +47,7 @@ class DataLoader():
                                         dataset_info['frame_norm_method'],
                                         dataset_info['annotations_to_load'],
                                         dataset_info['filter_by_annotations'],
-                                        dataset_info['num_test_tasks'],
+                                        dataset_info['num_val_tasks'],
                                         test_mode=True,
                                         logfile=dataset_info['logfile'])
         if 'test' in mode:

@@ -97,6 +97,7 @@ class Learner:
             'train_shot_methods': [self.args.train_context_shot_method, self.args.train_target_shot_method],
             'test_shot_methods': [self.args.test_context_shot_method, self.args.test_target_shot_method],
             'num_train_tasks': self.args.num_train_tasks,
+            'num_val_tasks': self.args.num_val_tasks,
             'num_test_tasks': self.args.num_test_tasks,
             'train_task_type': self.args.train_task_type,
             'test_set': self.args.test_set,
@@ -221,8 +222,8 @@ class Learner:
 
     def validate(self):
  
-        # loop through validation tasks (num_validation_users * num_test_tasks_per_user)
-        num_val_tasks = len(self.validation_queue) * self.args.num_test_tasks
+        # loop through validation tasks (num_validation_users * num_val_tasks_per_user)
+        num_val_tasks = len(self.validation_queue) * self.args.num_val_tasks
         for step, task_dict in enumerate(self.validation_queue.get_tasks()):
             context_clips, context_paths, context_labels, target_frames_by_video, target_paths_by_video, target_labels_by_video, object_list = unpack_task(task_dict, self.device, context_to_device=False)
             num_context_clips = len(context_clips)
@@ -257,7 +258,7 @@ class Learner:
                     num_target_clips += len(video_clips)
 
                 # if this is the user's last task, get the average performance for the user over all their tasks
-                if (step+1) % self.args.num_test_tasks == 0:
+                if (step+1) % self.args.num_val_tasks == 0:
                     self.validation_evaluator.set_current_user(task_dict["task_id"])
                     _, current_obj_stats,_,_ = self.validation_evaluator.get_mean_stats(current_user=True)
                     print_and_log(self.logfile, f'validation user {task_dict["task_id"]} ({self.validation_evaluator.current_user+1}/{len(self.validation_queue)}) stats: {stats_to_str(current_obj_stats)} #train clips: {num_context_clips} #test clips: {num_target_clips}')
