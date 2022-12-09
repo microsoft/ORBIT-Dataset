@@ -80,6 +80,10 @@ class Learner:
         self.init_evaluators()
         self.loss = cross_entropy
         self.train_task_fn = self.train_task_with_lite if self.args.with_lite else self.train_task
+        
+        print_and_log(self.logfile, f"Model details:\n"  \
+                f"\tfeature extractor: {self.args.feature_extractor} (pretrained: True, learnable: {self.args.learn_extractor}, generate film params: {self.args.adapt_features})\n" \
+                f"\tclassifier: {self.args.classifier} with logit scale={self.args.logit_scale}\n")
     
     def init_dataset(self):
         
@@ -105,6 +109,7 @@ class Learner:
             'test_clip_methods': [self.args.test_context_clip_method, self.args.test_target_clip_method],
             'subsample_factor': self.args.subsample_factor,
             'frame_size': self.args.frame_size,
+            'frame_norm_method': self.args.frame_norm_method,
             'annotations_to_load': self.args.annotations_to_load,
             'filter_by_annotations': [self.args.filter_context, self.args.filter_target],
             'logfile': self.logfile
@@ -117,10 +122,8 @@ class Learner:
         
     def init_model(self):
         self.model = SingleStepFewShotRecogniser(
-                        self.args.pretrained_extractor_path, self.args.feature_extractor,
-                        self.args.adapt_features, self.args.classifier, self.args.clip_length, self.args.batch_size,
-                        self.args.learn_extractor, self.args.feature_adaptation_method, self.args.num_lite_samples, self.args.logit_scale
-                    )
+            self.args.feature_extractor, self.args.adapt_features, self.args.classifier, self.args.clip_length,
+            self.args.batch_size, self.args.learn_extractor, self.args.num_lite_samples, self.args.logit_scale)
         self.model._set_device(self.device)
         self.model._send_to_device()
         
@@ -200,7 +203,7 @@ class Learner:
         self.train_evaluator.update_stats(target_logits, target_labels)
         
         task_loss = self.loss(target_logits, target_labels) / self.args.tasks_per_batch
-        task_loss += 0.001 * self.model.feature_adapter.regularization_term() 
+        task_loss += 0.001 * self.model.film_generator.regularization_term() 
         task_loss.backward(retain_graph=False)        
        
         # reset task's params
@@ -230,7 +233,7 @@ class Learner:
 
             loss_scaling = len(context_labels) / (self.args.num_lite_samples * self.args.tasks_per_batch)
             batch_loss = loss_scaling * self.loss(batch_target_logits, batch_target_labels)
-            batch_loss += 0.001 * self.model.feature_adapter.regularization_term()
+            batch_loss += 0.001 * self.model.film_generator.regularization_term()
             batch_loss.backward(retain_graph=False)
             task_loss += batch_loss.detach()
 

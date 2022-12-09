@@ -24,16 +24,12 @@ def parse_args(learner='default'):
                         help="Path to model to load and test.")
     parser.add_argument("--mode", choices=["train", "test", "train_test"], default="train_test",
                         help="Whether to run training only, testing only, or both training and testing.")
-    parser.add_argument("--feature_extractor", type=str, default="efficientnetb0", choices=["resnet18", "efficientnetb0"],
-                        help="Feature extractor backbone (default: efficientnetb0).")
+    parser.add_argument("--feature_extractor", type=str, default="efficientnet_b0", choices=["efficientnet_b0", "efficientnet_v2_s", "vit_s_32", "vit_b_32", "vit_b_32_clip"],
+                        help="Feature extractor backbone (default: efficientnet_b0).")
     parser.add_argument("--learn_extractor", action="store_true",
                         help="If True, learns all parameters of feature extractor.")
-    parser.add_argument("--pretrained_extractor_path", type=str, default=None,
-                        help="Path to pretrained feature extractor model (default: None).")
     parser.add_argument("--adapt_features", action="store_true",
                         help="If True, learns FiLM layers for feature adaptation.")
-    parser.add_argument("--feature_adaptation_method", default="generate", choices=["generate", "finetune"],
-                        help="Generate FiLM layers with hyper-networks or add-in and finetune FiLM layers directly (default: generate).")
     parser.add_argument("--classifier", default="linear", choices=["linear", "versa", "proto", "proto_cosine", "mahalanobis"],
                         help="Classifier head to use (default: linear).")
     parser.add_argument("--logit_scale", type=float, default=1.0,
@@ -178,6 +174,12 @@ def parse_args(learner='default'):
     args = parser.parse_args()
     args.filter_context = expand_issues(args.filter_context)
     args.filter_target = expand_issues(args.filter_target)
+    if args.feature_extractor == 'efficientnet_b0':
+        args.frame_norm_method = 'imagenet'
+    elif args.feature_extractor in ['efficientnet_v2_s', 'vit_s_32', 'vit_b_32']:
+        args.frame_norm_method = 'imagenet_inception'
+    elif args.feature_extractor == 'vit_b_32_clip':
+        args.frame_norm_method = 'openai_clip'
     verify_args(learner, args)
     return args
 
@@ -202,6 +204,3 @@ def verify_args(learner, args):
     if learner == 'multi-step-learner':
         if args.with_lite:
             print('{:}warning: --with_lite is not relevant for multi-step-learner.py. Normal batching is used instead{:}'.format(cyellow, cend))
-
-        if args.adapt_features and args.feature_adaptation_method == 'generate':
-            sys.exit("{:}error: multi-step-learner.py is not a generation-based method; use --feature_adaptation_method 'finetune' instead{:}".format(cred, cend))

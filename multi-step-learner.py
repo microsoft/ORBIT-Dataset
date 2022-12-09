@@ -78,6 +78,10 @@ class Learner:
         self.init_evaluators()
         self.model = self.init_model()
         self.loss = cross_entropy
+        
+        print_and_log(self.logfile, f"Model details:\n"  \
+                f"\tfeature extractor: {self.args.feature_extractor} (pretrained: True, learnable: {self.args.learn_extractor}, finetune film params: {self.args.adapt_features})\n" \
+                f"\tclassifier: {self.args.classifier} with logit scale={self.args.logit_scale}\n")
 
     def init_dataset(self):
 
@@ -103,6 +107,7 @@ class Learner:
             'test_clip_methods': [self.args.test_context_clip_method, self.args.test_target_clip_method],
             'subsample_factor': self.args.subsample_factor,
             'frame_size': self.args.frame_size,
+            'frame_norm_method': self.args.frame_norm_method,
             'annotations_to_load': self.args.annotations_to_load,
             'filter_by_annotations': [self.args.filter_context, self.args.filter_target],
             'logfile': self.logfile
@@ -115,10 +120,9 @@ class Learner:
         
     def init_model(self):
         model = MultiStepFewShotRecogniser(
-                    self.args.pretrained_extractor_path, self.args.feature_extractor,
-                    self.args.adapt_features, self.args.classifier, self.args.clip_length, self.args.batch_size,
-                    self.args.learn_extractor, self.args.feature_adaptation_method, self.args.logit_scale
-                )
+            self.args.feature_extractor, self.args.adapt_features, self.args.classifier, self.args.clip_length,
+            self.args.batch_size, self.args.learn_extractor, self.args.logit_scale
+        )
         model._set_device(self.device)
         model._send_to_device()
 
@@ -127,7 +131,6 @@ class Learner:
     def init_finetuner(self):
         finetuner = self.init_model()
         finetuner.load_state_dict(self.model.state_dict(), strict=False)
-        finetuner._freeze_extractor() 
         finetuner.set_test_mode(True)
         return finetuner
 
@@ -207,7 +210,7 @@ class Learner:
       
         joint_context_clips = torch.cat((context_clips, target_clips))
         joint_context_labels = torch.cat((context_labels, target_labels), dim=0)
-        joint_context_logits = self.model.predict(joint_context_clips, context=True)
+        joint_context_logits = self.model.predict(joint_context_clips)
         self.train_evaluator.update_stats(joint_context_logits, joint_context_labels) 
 
         task_loss = self.loss(joint_context_logits, joint_context_labels) / self.args.tasks_per_batch

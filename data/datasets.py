@@ -19,7 +19,7 @@ class ORBITDataset(Dataset):
     """
     Base class for ORBIT dataset.
     """
-    def __init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, clip_methods, clip_length, frame_size, annotations_to_load, filter_by_annotations, test_mode, with_cluster_labels, with_caps, logfile=None):
+    def __init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, clip_methods, clip_length, frame_size, frame_norm_method, annotations_to_load, filter_by_annotations, test_mode, with_cluster_labels, with_caps, logfile=None):
         """
         Creates instance of ORBITDataset.
         :param root: (str) Path to train/validation/test folder in ORBIT dataset root folder.
@@ -32,6 +32,7 @@ class ORBITDataset(Dataset):
         :param clip_methods: (str, str) Method for sampling clips of contiguous frames from videos for context and target sets.
         :param clip_length: (int) Number of contiguous frames per video clip.
         :param frame_size: (int) Size in pixels of loaded frames.
+        :param frame_norm_method: (str) Method to normalise frame pixel data.
         :param annotations_to_load: (list::str) Types of frame annotations to load from disk and return per task.
         :param filter_by_annotations (list::str) Types of frame annotations to filter by for context and target sets.
         :param test_mode: (bool) If True, returns task with target set grouped by video, otherwise returns task with target set as clips.
@@ -50,6 +51,7 @@ class ORBITDataset(Dataset):
         self.context_clip_method, self.target_clip_method = clip_methods
         self.clip_length = clip_length
         self.frame_size = frame_size
+        self.frame_norm_method = frame_norm_method
         self.test_mode = test_mode
         self.with_cluster_labels = with_cluster_labels
         self.with_caps = with_caps
@@ -77,7 +79,12 @@ class ORBITDataset(Dataset):
         self.clip_cap = 10 # limit number of clips sampled from any one video
         self.frame_cap = 1000 # limit number of frames in any one video
         self.original_frame_size = 1080
-        self.normalize_stats = {'mean' : [0.485, 0.456, 0.406], 'std' : [0.229, 0.224, 0.225]} # imagenet mean train frame
+        if self.frame_norm_method == 'imagenet':
+            self.normalize_stats = {'mean' : [0.485, 0.456, 0.406], 'std' : [0.229, 0.224, 0.225]} # imagenet pixel stats
+        elif self.frame_norm_method == 'imagenet_inception':
+            self.normalize_stats = {'mean' : [0.5, 0.5, 0.5], 'std' : [0.5, 0.5, 0.5]} # imagenet inception pixel stats
+        elif self.frame_norm_method == 'openai_clip':
+            self.normalize_stats = {'mean' : [0.48145466, 0.4578275, 0.40821073], 'std': [0.26862954, 0.26130258, 0.27577711]} # clip pixel stats
 
         # Setup empty collections.
         self.users = []         # List of users (str)
@@ -594,28 +601,11 @@ class UserEpisodicORBITDataset(ORBITDataset):
     """
     Class for user-centric episodic sampling of ORBIT dataset.
     """
-    def __init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, clip_methods, clip_length, frame_size, annotations_to_load, filter_by_annotations, test_mode, with_cluster_labels, with_caps, logfile):
+    def __init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, clip_methods, clip_length, frame_size, frame_norm_method, annotations_to_load, filter_by_annotations, test_mode, with_cluster_labels, with_caps, logfile):
         """
         Creates instance of UserEpisodicORBITDataset.
-        :param root: (str) Path to train/validation/test folder in ORBIT dataset root folder.
-        :param way_method: (str) If 'random', select a random number of objects per user. If 'max', select all objects per user.
-        :param object_cap: (int or str) Cap on number of objects per user. If 'max', leave uncapped.
-        :param shot_methods: (str, str) Method for sampling videos for context and target sets.
-        :param shots: (int, int) Number of videos to sample for context and target sets.
-        :param video_types: (str, str) Video types to sample for context and target sets.
-        :param subsample_factor: (int) Factor to subsample video frames if sampling frames uniformly.
-        :param clip_methods: (str, str) Method for sampling clips of contiguous frames from videos for context and target sets.
-        :param clip_length: (int) Number of contiguous frames per video clip.
-        :param frame_size: (int) Size in pixels of loaded frames.
-        :param annotations_to_load: (list::str) Types of frame annotations to load from disk and return per task.
-        :param filter_by_annotations (list::str) Types of frame annotations to filter by for context and target sets.
-        :param test_mode: (bool) If True, returns task with target set grouped by video, otherwise returns task with target set as clips.
-        :param with_cluster_labels: (bool) If True, use object cluster labels, otherwise use raw object labels.
-        :param with_caps: (bool) If True, impose caps on the number of videos per object, otherwise leave uncapped.
-        :param logfile: (file object) File for printing out loaded data summaries.
-        :return: Nothing.
         """
-        ORBITDataset.__init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, clip_methods, clip_length, frame_size, annotations_to_load, filter_by_annotations, test_mode, with_cluster_labels, with_caps, logfile)
+        ORBITDataset.__init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, clip_methods, clip_length, frame_size, frame_norm_method, annotations_to_load, filter_by_annotations, test_mode, with_cluster_labels, with_caps, logfile)
 
     def __getitem__(self, index):
         """
@@ -623,7 +613,6 @@ class UserEpisodicORBITDataset(ORBITDataset):
         :param index: (tuple) Task index.
         :return: (dict) Context and target set data for task.
         """
-
         user = self.users[index] # get user (each task == user id)
         user_objects = self.user2objs[user] # get user's objects
         return self.sample_task(user_objects, user)
@@ -632,28 +621,11 @@ class ObjectEpisodicORBITDataset(ORBITDataset):
     """
     Class for object-centric episodic sampling of ORBIT dataset.
     """
-    def __init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, clip_methods, clip_length, frame_size, annotations_to_load, filter_by_annotations, test_mode, with_cluster_labels, with_caps, logfile):
+    def __init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, clip_methods, clip_length, frame_size, frame_norm_method, annotations_to_load, filter_by_annotations, test_mode, with_cluster_labels, with_caps, logfile):
         """
         Creates instance of ObjectEpisodicORBITDataset.
-        :param root: (str) Path to train/validation/test folder in ORBIT dataset root folder.
-        :param way_method: (str) If 'random', select a random number of objects per user. If 'max', select all objects per user.
-        :param object_cap: (int or str) Cap on number of objects per user. If 'max', leave uncapped.
-        :param shot_methods: (str, str) Method for sampling videos for context and target sets.
-        :param shots: (int, int) Number of videos to sample for context and target sets.
-        :param video_types: (str, str) Video types to sample for context and target sets.
-        :param subsample_factor: (int) Factor to subsample video frames if sampling frames uniformly.
-        :param clip_methods: (str, str) Method for sampling clips of contiguous frames from videos for context and target sets.
-        :param clip_length: (int) Number of contiguous frames per video clip.
-        :param frame_size: (int) Size in pixels of loaded frames.
-        :param annotations_to_load: (list::str) Types of frame annotations to load from disk and return per task.
-        :param filter_by_annotations (list::str) Types of frame annotations to filter by for context and target sets.
-        :param test_mode: (bool) If True, returns task with target set grouped by video, otherwise returns task with target set as clips.
-        :param with_cluster_labels: (bool) If True, use object cluster labels, otherwise use raw object labels.
-        :param with_caps: (bool) If True, impose caps on the number of videos per object, otherwise leave uncapped.
-        :param logfile: (file object) File for printing out loaded data summaries.
-        :return: Nothing.
         """
-        ORBITDataset.__init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, clip_methods, clip_length, frame_size, annotations_to_load, filter_by_annotations, test_mode, with_cluster_labels, with_caps, logfile)
+        ORBITDataset.__init__(self, root, way_method, object_cap, shot_methods, shots, video_types, subsample_factor, clip_methods, clip_length, frame_size, frame_norm_method, annotations_to_load, filter_by_annotations, test_mode, with_cluster_labels, with_caps, logfile)
 
     def __getitem__(self, index):
         """

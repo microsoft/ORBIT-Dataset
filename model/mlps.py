@@ -30,21 +30,6 @@ SOFTWARE.
 
 import torch.nn as nn
 
-class DenseBlock(nn.Module):
-    def __init__(self, in_size, out_size):
-        super(DenseBlock, self).__init__()
-        self.linear1 = nn.Linear(in_size, in_size)
-        self.layernorm = nn.LayerNorm(in_size)
-        self.relu = nn.ReLU()
-        self.linear2 = nn.Linear(in_size, out_size)
-
-    def forward(self, x):
-        out = self.linear1(x)
-        out = self.layernorm(out)
-        out = self.relu(out)
-        out = self.linear2(out)
-        return out
-
 class DenseResidualBlock(nn.Module):
     def __init__(self, in_size, out_size):
         super(DenseResidualBlock, self).__init__()
@@ -63,3 +48,16 @@ class DenseResidualBlock(nn.Module):
         if x.shape[-1] == out.shape[-1]:
             out += identity
         return out
+
+class DenseBlock(nn.Module):
+    def __init__(self, in_size, hidden_size, out_size):
+        super(DenseBlock, self).__init__()
+        self.block = nn.Sequential(
+                            nn.Linear(in_size, hidden_size),
+                            nn.LayerNorm(hidden_size),
+                            nn.ReLU(),
+                            nn.Linear(hidden_size, out_size)
+                        )
+
+    def forward(self, x):
+        return self.block(x)

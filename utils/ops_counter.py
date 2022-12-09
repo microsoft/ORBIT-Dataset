@@ -25,19 +25,23 @@ class OpsCounter():
             for param in base_model.classifier.parameters():
                 classifier_params += param.numel()
 
-        feature_adapter_params, set_encoder_params = 0, 0
+        film_generator_params, set_encoder_params, film_params = 0, 0, 0
         if base_model.adapt_features:
-            # feature adapter params
-            for param in base_model.feature_adapter.parameters():
-                feature_adapter_params += param.numel()
+            # film generator params
+            if hasattr(base_model, 'film_generator'):
+                for param in base_model.film_generator.parameters():
+                    film_generator_params += param.numel()
             # set encoder params
-            for param in base_model.set_encoder.parameters():
-                set_encoder_params += param.numel()
+            if hasattr(base_model, 'set_encoder'):
+                for param in base_model.set_encoder.parameters():
+                    set_encoder_params += param.numel()
+            # film params
+            film_params = sum(base_model.film_parameter_sizes)
 
-        self.base_params_counter = feature_extractor_params + classifier_params + feature_adapter_params + set_encoder_params
-        feature_extractor_params, classifier_params, feature_adapter_params, set_encoder_params = clever_format([feature_extractor_params, classifier_params, feature_adapter_params, set_encoder_params], "%.2f")
-        self.params_break_down = "feature extractor: {0:}, classifier: {1:}, feature adapter: {2:}, set encoder: {3:}".format(feature_extractor_params, classifier_params, feature_adapter_params, set_encoder_params)
-
+        self.base_params_counter = feature_extractor_params + classifier_params + film_generator_params + set_encoder_params + film_params
+        feature_extractor_params, classifier_params, film_generator_params, set_encoder_params, film_params = clever_format([feature_extractor_params, classifier_params, film_generator_params, set_encoder_params, film_params], "%.2f")
+        self.params_break_down = "feature extractor: {0:}, classifier: {1:}, film generator: {2:}, set encoder: {3:}, film params {4:}".format(feature_extractor_params, classifier_params, film_generator_params, set_encoder_params, film_params)
+        
     def add_macs(self, num_macs):
         self.task_mac_counter += num_macs
 

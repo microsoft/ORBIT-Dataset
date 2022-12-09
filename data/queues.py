@@ -40,9 +40,9 @@ class DatasetQueue:
         return self.dataset.cluster_classes
 
 class UserEpisodicDatasetQueue(DatasetQueue):
-    def __init__(self, root, way_method, object_cap, shot_method, shots, video_types, subsample_factor, clip_methods, clip_length, frame_size, annotations_to_load, filter_by_annotations, num_tasks, test_mode, with_cluster_labels, with_caps, shuffle, logfile):
+    def __init__(self, root, way_method, object_cap, shot_method, shots, video_types, subsample_factor, clip_methods, clip_length, frame_size, frame_norm_method, annotations_to_load, filter_by_annotations, num_tasks, test_mode, with_cluster_labels, with_caps, shuffle, logfile):
         DatasetQueue.__init__(self, num_tasks, shuffle, num_workers=4 if test_mode else 8)
-        self.dataset = UserEpisodicORBITDataset(root, way_method, object_cap, shot_method, shots, video_types, subsample_factor, clip_methods, clip_length, frame_size, annotations_to_load, filter_by_annotations, test_mode, with_cluster_labels, with_caps, logfile)
+        self.dataset = UserEpisodicORBITDataset(root, way_method, object_cap, shot_method, shots, video_types, subsample_factor, clip_methods, clip_length, frame_size, frame_norm_method, annotations_to_load, filter_by_annotations, test_mode, with_cluster_labels, with_caps, logfile)
         self.num_users = self.dataset.num_users
     
     def get_tasks(self):
@@ -58,9 +58,9 @@ class UserEpisodicDatasetQueue(DatasetQueue):
         return self.dataset.num_users
 
 class ObjectEpisodicDatasetQueue(DatasetQueue):
-    def __init__(self, root, way_method, object_cap, shot_method, shots, video_types, subsample_factor, clip_methods, clip_length, frame_size, annotations_to_load, filter_by_annotations, num_tasks, test_mode, with_cluster_labels, with_caps, shuffle, logfile):
+    def __init__(self, root, way_method, object_cap, shot_method, shots, video_types, subsample_factor, clip_methods, clip_length, frame_size, frame_norm_method, annotations_to_load, filter_by_annotations, num_tasks, test_mode, with_cluster_labels, with_caps, shuffle, logfile):
         DatasetQueue.__init__(self, num_tasks, shuffle, num_workers=4 if test_model else 8)
-        self.dataset = ObjectEpisodicORBITDataset(root, way_method, object_cap, shot_method, shots, video_types, subsample_factor, clip_methods, clip_length, frame_size, annotations_to_load, filter_by_annotations, test_mode, with_cluster_labels, with_caps, logfile)
+        self.dataset = ObjectEpisodicORBITDataset(root, way_method, object_cap, shot_method, shots, video_types, subsample_factor, clip_methods, clip_length, frame_size, frame_norm_method, annotations_to_load, filter_by_annotations, test_mode, with_cluster_labels, with_caps, logfile)
         self.num_users = self.dataset.num_users
         self.num_objects = self.dataset.num_objects
     
