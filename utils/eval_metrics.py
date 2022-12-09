@@ -142,7 +142,7 @@ class TestEvaluator(Evaluator):
         self.json_results_path.parent.mkdir(exist_ok=True, parents=True)
         with open(self.json_results_path, 'w') as json_file:
             json.dump(output, json_file)
-
+    
     def get_mean_stats(self, current_user=False):
         user_scores = { stat: [] for stat in self.stats_to_compute }
         video_scores = { stat: [] for stat in self.stats_to_compute }
@@ -176,7 +176,7 @@ class TestEvaluator(Evaluator):
                         if object_label in list(obj2flatframeprobs.keys()):
                             obj2flatframeprobs[object_label].extend(frame_probs)
                         else:
-                            obj2flatframeprobs[object_label] = [frame_probs]
+                            obj2flatframeprobs[object_label] = list(frame_probs)
                         
                     task_score = self.stat_fns[stat](np.array(flat_task_frame_labels), np.row_stack(flat_task_frame_probs))
                     task_scores[stat].append(task_score) # accumulate list of scores per task
@@ -185,14 +185,11 @@ class TestEvaluator(Evaluator):
                     flat_user_frame_labels.extend(flat_task_frame_labels)
 
                 for obj, flat_obj_frame_probs in obj2flatframeprobs.items():
-                    #flat_obj_frame_labels = np.repeat([obj], len(flat_obj_frame_probs))
                     obj_score = self.stat_fns[stat](np.array(obj), np.row_stack(flat_obj_frame_probs))
                     object_scores[stat].append(obj_score)
                 
                 user_score = self.stat_fns[stat](np.array(flat_user_frame_labels), np.row_stack(flat_user_frame_probs))
                 user_scores[stat].append(user_score)
-                #user_mean = np.mean(user_video_scores) # compute mean over target videos for current user
-                #user_scores[stat].append(user_mean) # append mean over target videos for current user
                 
         # computes average score over all users
         user_stats = self.average_over_scores(user_scores) # user_scores: [user_1_mean, ..., user_M_mean]
@@ -202,7 +199,7 @@ class TestEvaluator(Evaluator):
         task_stats = self.average_over_scores(task_scores) # task_scores: [user_1_task_1_mean, user_1_task_2_mean, ..., user_M_task_T_mean]
         # computes average score over all videos
         video_stats = self.average_over_scores(video_scores) # video_scores: [user_1_video_1_mean, user_1_video_2_mean, ..., user_M_video_N_mean]
-        return user_stats, object_stats, task_stats, video_stats, 
+        return user_stats, object_stats, task_stats, video_stats
 
     def average_over_scores(self, user_stats):
         mean_stats = {}
