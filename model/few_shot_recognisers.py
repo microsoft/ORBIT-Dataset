@@ -388,7 +388,21 @@ class SingleStepFewShotRecogniser(FewShotRecogniser):
             reps.append(batch_reps)
 
         return self.set_encoder.aggregate(reps, reduction=reduction)
-
+    
+    def _get_task_embedding_with_lite(self, context_clips, idxs):
+        """
+        Function that passes all of a task's context set through the set encoder to get a task embedding with LITE.
+        :param context_clips: (torch.Tensor) Context clips, each composed of self.clip_length contiguous frames.
+        :param idxs: (torch.Tensor) Indicies of elements in context_clips to process with back-propagation enabled.
+        :return: (torch.Tensor or None) Task embedding.
+        """
+        if isinstance(self.set_encoder, NullSetEncoder):
+            return None
+        self._set_batch_norm_state()
+        H = self.num_lite_samples
+        task_embedding_with_grads = self._get_task_embedding_in_batches(context_clips, reduction='none')
+        task_embedding_without_grads = self.cached_set_encoder_reps[idxs][H:]
+        return torch.cat((task_embedding_with_grads, task_embedding_without_grads)).mean(dim=0)
     
     def _generate_film_params(self, task_embedding, ops_counter=None):
         """
@@ -416,27 +430,12 @@ class SingleStepFewShotRecogniser(FewShotRecogniser):
             self.cached_set_encoder_reps = self._get_task_embedding_in_batches(context_clips, reduction='none')
 
             # get feature adapter parameters
-            task_embedding = torch.mean(self.cached_set_encoder_reps, dim=0, keepdim=True)
+            task_embedding = self.set_encoder.aggregate(self.cached_set_encoder_reps, reduction='mean')
             film_dict = self._generate_film_params(task_embedding)
 
             # cache adapted features for each clip
             context_features = self._get_features_in_batches(context_clips, film_dict)
             self.cached_context_features = self._pool_features(context_features)
-
-    def _get_task_embedding_with_lite(self, context_clips, idxs):
-        """
-        Function that passes all of a task's context set through the set encoder to get a task embedding with LITE.
-        :param context_clips: (torch.Tensor) Context clips, each composed of self.clip_length contiguous frames.
-        :param idxs: (torch.Tensor) Indicies of elements in context_clips to process with back-propagation enabled.
-        :return: (torch.Tensor or None) Task embedding.
-        """
-        if isinstance(self.set_encoder, NullSetEncoder):
-            return None
-        self._set_batch_norm_state()
-        H = self.num_lite_samples
-        task_embedding_with_grads = self._get_task_embedding_in_batches(context_clips, reduction='none')
-        task_embedding_without_grads = self.cached_set_encoder_reps[idxs][H:]
-        return torch.cat((task_embedding_with_grads, task_embedding_without_grads)).mean(dim=0)
 
     def _get_pooled_features_with_lite(self, context_clips, film_dict, idxs):
         """

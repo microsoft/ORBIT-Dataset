@@ -75,11 +75,12 @@ class SetEncoder(nn.Module):
     def aggregate(self, x, reduction='mean'):
         """
         Function that aggregates the encoded elements in x.
-        :param x: (torch.Tensor) Set of encoded elements (i.e. from forward()).
+        :param x: (torch.Tensor or list of torch.Tensor) Set of encoded elements (i.e. from forward()).
         :param reduction: (str) If 'mean', average the encoded elements in x, otherwise do not average.
         :return: (torch.Tensor) Mean representation of the set as a single vector if reduction = 'mean', otherwise as a set of encoded elements.
         """
-        x = torch.cat(x, dim=0)
+        if not isinstance(x, torch.Tensor):
+            x = torch.cat(x, dim=0)
         if reduction == 'mean':
             x = torch.mean(x, dim=0, keepdim=True)
         return x
