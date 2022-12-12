@@ -204,5 +204,8 @@ def verify_args(learner, args):
         sys.exit('{:}error: at least one of "--learn_extractor" and "--adapt_features" must be used during training{:}'.format(cred, cend))
 
     if learner == 'multi-step-learner':
+        if 'train' in args.mode:
+            sys.exit('{:}error: Only "--mode test" is supported for multi-step-learner.py{:}'.format(cred, cend))
+
         if args.with_lite:
-            print('{:}warning: --with_lite is not relevant for multi-step-learner.py. Normal batching is used instead{:}'.format(cyellow, cend))
+            print('{:}warning: "--with_lite" is not relevant for multi-step-learner.py. Normal batching is used instead{:}'.format(cyellow, cend))
