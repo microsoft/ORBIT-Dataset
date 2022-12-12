@@ -30,8 +30,8 @@ def parse_args(learner='default'):
                         help="If True, learns all parameters of feature extractor.")
     parser.add_argument("--adapt_features", action="store_true",
                         help="If True, learns FiLM layers for feature adaptation.")
-    parser.add_argument("--classifier", default="linear", choices=["linear", "versa", "proto", "proto_cosine", "mahalanobis"],
-                        help="Classifier head to use (default: linear).")
+    parser.add_argument("--classifier", default="proto", choices=["linear", "versa", "proto", "proto_cosine", "mahalanobis"],
+                        help="Classifier head to use (default: proto).")
     parser.add_argument("--logit_scale", type=float, default=1.0,
                         help="Scale factor for logits (default: 1.0).")
 
@@ -62,8 +62,8 @@ def parse_args(learner='default'):
                         help="Video type for context set (default: clean).")
     parser.add_argument("--target_video_type", type=str, default='clutter', choices=['clutter', 'clean'],
                         help="Video type for target set (default: clutter).")
-    parser.add_argument("--subsample_factor", type=int, default=10,
-                        help="Factor to subsample video by if sampling clip uniformly (default: 10).")
+    parser.add_argument("--subsample_factor", type=int, default=30,
+                        help="Factor to subsample video by if sampling clip uniformly (default: 30).")
     parser.add_argument("--train_context_clip_method", type=str, default='random', choices=['random', 'random_200', 'max', 'uniform'],
                         help="Method to sample clips per context video for a train task (default: uniform).")
     parser.add_argument("--train_target_clip_method", type=str, default='random', choices=['random', 'random_200', 'max'],
@@ -100,49 +100,49 @@ def parse_args(learner='default'):
                         help="Number of tasks between parameter optimization.")
     parser.add_argument("--with_lite", action="store_true",
                         help="If True, trains with LITE.")
-    parser.add_argument("--num_lite_samples", type=int, default=8,
-                        help="Number of context clips per task to back-propagate with LITE training (default: 8)")
+    parser.add_argument("--num_lite_samples", type=int, default=16,
+                        help="Number of context clips per task to back-propagate with LITE training (default: 16)")
     parser.add_argument("--gpu", type=int, default=0,
                         help="gpu id to use (default: 0, cpu: <0)")
     parser.add_argument("--print_by_step", action="store_true",
                         help="Print training by step (otherwise print by epoch).")
 
     # optimization parameters
-    parser.add_argument("--epochs", "-e", type=int, default=10,
-                        help="Number of training epochs (default: 10).")
-    parser.add_argument("--validation_on_epoch", type=int, default=5,
-                        help="Epoch to turn on validation (default: 5).")
-    parser.add_argument("--learning_rate", "-lr", type=float, default=0.0001,
-                        help="Learning rate (default: 0.0001).")
-    parser.add_argument("--extractor_lr_scale", type=float, default=0.1,
-                        help="Factor to scale learning rate for feature extractor.")
+    parser.add_argument("--epochs", "-e", type=int, default=25,
+                        help="Number of training epochs (default: 25).")
+    parser.add_argument("--validation_on_epoch", type=int, default=1,
+                        help="Epoch to turn on validation (default: 1).")
+    parser.add_argument("--learning_rate", "-lr", type=float, default=5e-6,
+                        help="Learning rate (default: 5e-6).")
+    parser.add_argument("--extractor_lr_scale", type=float, default=1.0,
+                        help="Factor to scale learning rate for feature extractor (default: 1.0).")
     parser.add_argument("--optimizer", type=str, default="adam", choices=["adam", "sgd"],
-                        help="Optimization method to use.")
-    parser.add_argument("--weight_decay", type=float, default=0.0,
-                        help="Weight decay value for optimizer.")
+                        help="Optimization method to use (default: adam).")
+    parser.add_argument("--weight_decay", type=float, default=0.2,
+                        help="Weight decay value for optimizer (default: 0.2).")
 
     adam_group = parser.add_argument_group("Adam optimizer hyperparameters")
-    adam_group.add_argument("--epsilon", type=float, default=1e-08,
-                        help="Epsilon value for Adam optimizer.")
-    adam_group.add_argument("--betas", type=float, nargs=2, default=(0.9, 0.999),
-                        help="Beta values for Adam optimizer (default: (0.9, 0.999).")
+    adam_group.add_argument("--epsilon", type=float, default=1e-6,
+                        help="Epsilon value for Adam optimizer (default: 1e-6).")
+    adam_group.add_argument("--betas", type=float, nargs=2, default=(0.9, 0.98),
+                        help="Beta values for Adam optimizer (default: (0.9, 0.98).")
 
     sgd_group = parser.add_argument_group("SGD optimizer hyperparameters")
     sgd_group.add_argument("--momentum", type=float, default=0.0,
-                        help="Momentum value for SGD optimizer.")
+                        help="Momentum value for SGD optimizer (default: 0.0).")
 
-    parser.add_argument("--scheduler", dest="sched", type=str, default="step", choices=["step", "multistep", "cosine"],
-                        help="Type of learning rate scheduler (default: none.")
+    parser.add_argument("--scheduler", dest="sched", type=str, default="multistep", choices=["step", "multistep", "cosine"],
+                        help="Type of learning rate scheduler (default: multistep.")
     parser.add_argument("--warmup_lr", type=float, default=1e-6,
                         help="Warmup learning rate for scheduler (default: 1e-6).")
-    parser.add_argument("--warmup_epochs", type=int, default=0,
-                        help="Number of warmup epochs for scheduler (default: 0.")
+    parser.add_argument("--warmup_epochs", type=int, default=5,
+                        help="Number of warmup epochs for scheduler (default: 5).")
 
     step_group = parser.add_argument_group("Step/multi-step optimizer hyperparameters")
-    step_group.add_argument("--decay_epochs", type=int, default=5,
-                        help="Epoch period LR is decayed for step scheduler (default: 5).")
-    step_group.add_argument("--decay_rate", type=float, default=0.1,
-                        help="Learning rate decay factor for step scheduler (default: 0.1).")
+    step_group.add_argument("--decay_epochs", type=int, default=15,
+                        help="Epoch period LR is decayed for step scheduler (default: 15).")
+    step_group.add_argument("--decay_rate", type=float, default=0.5,
+                        help="Learning rate decay factor for step scheduler (default: 0.5).")
     
     cosine_group = parser.add_argument_group("Cosine optimizer hyperparameters")
     cosine_group.add_argument("--cooldown_epochs", type=int, default=0,
@@ -158,20 +158,20 @@ def parse_args(learner='default'):
         finetune_group = parser.add_argument_group("Finetuning hyperparameters to use for personalization")
         finetune_group.add_argument("--personalize_num_grad_steps", type=int, default=50,
                         help="Number of gradient steps for personalization (default: 50).")
-        finetune_group.add_argument("--personalize_learning_rate", type=float, default=0.1,
-                        help="Learning rate for personalization (default: 0.1).")
-        finetune_group.add_argument("--personalize_optimizer", type=str, choices=["sgd", "adam"], default="sgd",
-                        help="Optimizer type for personalization (default: sgd).")
+        finetune_group.add_argument("--personalize_learning_rate", type=float, default=0.007,
+                        help="Learning rate for personalization (default: 0.007).")
+        finetune_group.add_argument("--personalize_optimizer", type=str, choices=["sgd", "adam"], default="adam",
+                        help="Optimizer type for personalization (default: adam).")
         finetune_group.add_argument("--personalize_weight_decay", type=float, default=0.0,
                         help="Weight decay for personalization (default: 0.0).")
         finetune_group.add_argument("--personalize_extractor_lr_scale", type=float, default=0.1,
-                        help="Factor to scale learning rate for feature extractor during personalization.")
-        finetune_group.add_argument("--personalize_epsilon", type=float, default=1e-08,
-                        help="Epsilon value for Adam optimizer during personalization.")
+                        help="Factor to scale learning rate for feature extractor during personalization (default: 0.1).")
+        finetune_group.add_argument("--personalize_epsilon", type=float, default=1e-8,
+                        help="Epsilon value for Adam optimizer during personalization (default 1e-8).")
         finetune_group.add_argument("--personalize_betas", type=float, nargs=2, default=(0.9, 0.999),
                         help="Beta values for Adam optimizer during personalization (default: (0.9, 0.999).")
         finetune_group.add_argument("--personalize_momentum", type=float, default=0.0,
-                        help="Momentum for SGD optimizer during personalization.")
+                        help="Momentum for SGD optimizer during personalization (default: 0.0).")
 
     args = parser.parse_args()
     args.filter_context = expand_issues(args.filter_context)
