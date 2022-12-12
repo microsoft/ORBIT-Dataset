@@ -49,6 +49,11 @@ class FilmParameterGenerator(nn.Module):
                                                   requires_grad=True))
 
             self.l2_term = 0.0
+    
+    def _apply(self, fn): # ensures self.initial_film_parameters is moved to device
+        super(FilmParameterGenerator, self)._apply(fn)
+        self.initial_film_parameters = [fn(p) for p in self.initial_film_parameters]
+        return self
 
     def _make_generator(self, pooled_size, hidden_size, out_size):
         return DenseBlock(pooled_size, hidden_size, out_size)
