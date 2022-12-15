@@ -164,8 +164,8 @@ def parse_args(learner='default'):
                         help="Optimizer type for personalization (default: adam).")
         finetune_group.add_argument("--personalize_weight_decay", type=float, default=0.0,
                         help="Weight decay for personalization (default: 0.0).")
-        finetune_group.add_argument("--personalize_extractor_lr_scale", type=float, default=0.1,
-                        help="Factor to scale learning rate for feature extractor during personalization (default: 0.1).")
+        finetune_group.add_argument("--personalize_extractor_lr_scale", type=float, default=1.0,
+                        help="Factor to scale learning rate for feature extractor during personalization (default: 1.0).")
         finetune_group.add_argument("--personalize_epsilon", type=float, default=1e-8,
                         help="Epsilon value for Adam optimizer during personalization (default 1e-8).")
         finetune_group.add_argument("--personalize_betas", type=float, nargs=2, default=(0.9, 0.999),
