@@ -36,7 +36,7 @@ from torch.nn.utils.stateless import functional_call
 
 from data.utils import get_batch_indices
 from model.feature_extractors import create_feature_extractor
-from model.film import get_film_parameters, get_film_parameter_names, get_film_parameter_sizes, init_film_parameters, film_to_dict
+from model.film import get_film_parameters, get_film_parameter_names, get_film_parameter_sizes, film_to_dict
 from model.feature_adapters import FilmParameterGenerator, NullGenerator
 from model.poolers import MeanPooler
 from model.set_encoders import SetEncoder, NullSetEncoder
@@ -229,7 +229,6 @@ class MultiStepFewShotRecogniser(FewShotRecogniser):
 
         num_classes = len(torch.unique(context_labels))
         self.init_classifier(num_classes)
-        self.init_film_parameters() # re-initialise FilM layers for each task if self.adapt_features = True
         personalize_optimizer = init_optimizer(self, learning_rate, optimizer, optimizer_kwargs, extractor_lr_scale)
 
         batch_context_set_size = len(context_labels)
@@ -273,13 +272,6 @@ class MultiStepFewShotRecogniser(FewShotRecogniser):
         """
         self.classifier.init(num_classes)
         self.classifier.to(self.device)
-
-    def init_film_parameters(self):
-        """
-        Function that initialises learnable FiLM layers
-        :return: Nothing.
-        """
-        init_film_parameters(self.film_parameter_names, self.feature_extractor, self.device)
 
 class SingleStepFewShotRecogniser(FewShotRecogniser):
     """
