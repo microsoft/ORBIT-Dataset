@@ -76,7 +76,7 @@ class ORBITDataset(Dataset):
         self.object_cap = object_cap
         self.context_shot_cap = 15
         self.target_shot_cap = 15
-        self.clip_cap = 10 # limit number of clips sampled from any one video
+        self.clip_cap = 200 # limit number of clips sampled from any one video
         self.frame_cap = 1000 # limit number of frames in any one video
         self.original_frame_size = 1080
         if self.frame_norm_method == 'imagenet':
