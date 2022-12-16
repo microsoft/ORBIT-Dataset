@@ -249,6 +249,7 @@ class Learner:
     def validate(self):
         
         self.model.set_test_mode(True) 
+        num_context_clips_per_task, num_target_clips_per_task = [], []
         with torch.no_grad():
             # loop through validation tasks (num_validation_users * num_val_tasks)
             num_val_tasks = len(self.validation_queue) * self.args.num_val_tasks
@@ -276,10 +277,13 @@ class Learner:
                 if (step+1) % self.args.num_val_tasks == 0:
                     self.validation_evaluator.set_current_user(task_dict["task_id"])
                     _,_,_,current_video_stats = self.validation_evaluator.get_mean_stats(current_user=True)
-                    print_and_log(self.logfile, f'validation user {task_dict["task_id"]} ({self.validation_evaluator.current_user+1}/{len(self.validation_queue)}) stats: {stats_to_str(current_video_stats)} #train clips: {num_context_clips} #test clips: {num_target_clips}')
+                    print_and_log(self.logfile, f'validation user {task_dict["task_id"]} ({self.validation_evaluator.current_user+1}/{len(self.validation_queue)}) stats: {stats_to_str(current_video_stats)} avg. #context clips/task: {np.mean(num_context_clips_per_task)} avg. #target clips/task: {np.mean(num_target_clips_per_task)}')
                     if (step+1) < num_val_tasks:
+                        num_context_clips_per_task, num_target_clips_per_task = [], []
                         self.validation_evaluator.next_user()
                 else:
+                    num_context_clips_per_task.append(num_context_clips)
+                    num_target_clips_per_task.append(num_target_clips)
                     self.validation_evaluator.next_task()
 
             stats_per_user, stats_per_obj, stats_per_task, stats_per_video = self.validation_evaluator.get_mean_stats()
@@ -304,6 +308,7 @@ class Learner:
             path = self.checkpoint_dir
         self.model.set_test_mode(True)
         self.ops_counter.set_base_params(self.model)
+        num_context_clips_per_task, num_target_clips_per_task = [], []
 
         with torch.no_grad():
             # loop through test tasks (num_test_users * num_test_tasks_per_user)
@@ -339,10 +344,13 @@ class Learner:
                 if (step+1) % self.args.num_test_tasks == 0:
                     self.test_evaluator.set_current_user(task_dict["task_id"])
                     _,_,_,current_video_stats = self.test_evaluator.get_mean_stats(current_user=True)
-                    print_and_log(self.logfile, f'{self.args.test_set} user {task_dict["task_id"]} ({self.test_evaluator.current_user+1}/{len(self.test_queue)}) stats: {stats_to_str(current_video_stats)} #train clips: {num_context_clips} #test clips: {num_target_clips}')
+                    print_and_log(self.logfile, f'{self.args.test_set} user {task_dict["task_id"]} ({self.test_evaluator.current_user+1}/{len(self.test_queue)}) stats: {stats_to_str(current_video_stats)} avg. #context clips/task: {np.mean(num_context_clips_per_task)} avg. #target clips/task: {np.mean(num_target_clips_per_task)}')
                     if (step+1) < num_test_tasks:
+                        num_context_clips_per_task, num_target_clips_per_task = [], []
                         self.test_evaluator.next_user()
                 else:
+                    num_context_clips_per_task.append(num_context_clips)
+                    num_target_clips_per_task.append(num_target_clips)
                     self.test_evaluator.next_task()
             
             stats_per_user, stats_per_obj, stats_per_task, stats_per_video = self.test_evaluator.get_mean_stats()
