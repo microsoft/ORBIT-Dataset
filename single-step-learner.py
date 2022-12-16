@@ -275,8 +275,8 @@ class Learner:
                 # if this is the user's last task, get the average performance for the user over all their tasks
                 if (step+1) % self.args.num_val_tasks == 0:
                     self.validation_evaluator.set_current_user(task_dict["task_id"])
-                    _, current_obj_stats,_,_ = self.validation_evaluator.get_mean_stats(current_user=True)
-                    print_and_log(self.logfile, f'validation user {task_dict["task_id"]} ({self.validation_evaluator.current_user+1}/{len(self.validation_queue)}) stats: {stats_to_str(current_obj_stats)} #train clips: {num_context_clips} #test clips: {num_target_clips}')
+                    _,_,_,current_video_stats = self.validation_evaluator.get_mean_stats(current_user=True)
+                    print_and_log(self.logfile, f'validation user {task_dict["task_id"]} ({self.validation_evaluator.current_user+1}/{len(self.validation_queue)}) stats: {stats_to_str(current_video_stats)} #train clips: {num_context_clips} #test clips: {num_target_clips}')
                     if (step+1) < num_val_tasks:
                         self.validation_evaluator.next_user()
                 else:
@@ -338,8 +338,8 @@ class Learner:
                 # if this is the user's last task, get the average performance for the user over all their tasks
                 if (step+1) % self.args.num_test_tasks == 0:
                     self.test_evaluator.set_current_user(task_dict["task_id"])
-                    _, current_obj_stats,_,_ = self.test_evaluator.get_mean_stats(current_user=True)
-                    print_and_log(self.logfile, f'{self.args.test_set} user {task_dict["task_id"]} ({self.test_evaluator.current_user+1}/{len(self.test_queue)}) stats: {stats_to_str(current_obj_stats)} #train clips: {num_context_clips} #test clips: {num_target_clips}')
+                    _,_,_,current_video_stats = self.test_evaluator.get_mean_stats(current_user=True)
+                    print_and_log(self.logfile, f'{self.args.test_set} user {task_dict["task_id"]} ({self.test_evaluator.current_user+1}/{len(self.test_queue)}) stats: {stats_to_str(current_video_stats)} #train clips: {num_context_clips} #test clips: {num_target_clips}')
                     if (step+1) < num_test_tasks:
                         self.test_evaluator.next_user()
                 else:
