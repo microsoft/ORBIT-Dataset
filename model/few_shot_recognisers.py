@@ -304,8 +304,7 @@ class SingleStepFewShotRecogniser(FewShotRecogniser):
         Function that sets batch norm modules to appropriate train() or eval() states.
         :return: Nothing.
         """
-        self.set_encoder.train() # set encoder always in train mode (it processes context data)
-        self.feature_extractor.eval()
+        self.eval()
         if self.learn_extractor and not self.test_mode: # if meta-training and extractor is unfrozen, then it must be in train() mode
             self.feature_extractor.train()
 

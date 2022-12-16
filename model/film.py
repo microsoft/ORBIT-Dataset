@@ -58,7 +58,7 @@ def tag_film_layers(feature_extractor_name, feature_extractor):
         def recursive_tag(module, name):
             for child_module_name in dir(module):
                 child_module = getattr(module, child_module_name)
-                if 'norm' in child_module_name:
+                if child_module_name in ['norm', 'norm1', 'norm2']:
                     child_module.film = True
             for name, child in module.named_children():
                 recursive_tag(child, name)
