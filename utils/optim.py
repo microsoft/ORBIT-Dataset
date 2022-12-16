@@ -33,7 +33,10 @@ def init_optimizer(model, lr, optimizer_type, args={}, extractor_lr_scale=0.1):
 
 def init_scheduler(optimizer, args):
     if args.sched == 'multistep':
-        args.decay_milestones = list(range(0, args.epochs, args.decay_epochs))
+        if args.decay_epochs >= args.epochs:
+            args.decay_milestones = [args.epochs+1]
+        else:
+            args.decay_milestones = list(range(args.decay_epochs, args.epochs, args.decay_epochs))
     if args.sched == 'cosine':
         args.warmup_prefix = True
     scheduler, _ = create_scheduler(args, optimizer)
