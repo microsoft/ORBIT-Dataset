@@ -83,11 +83,11 @@ class DataLoader():
                             num_tasks, test_mode=False, with_cluster_labels=False, with_caps=False, shuffle=False, logfile=None):
         return UserEpisodicDatasetQueue(root, way_method, object_cap, shot_method, shots, video_types, \
                                 subsample_factor, clip_methods, clip_length, frame_size, frame_norm_method, annotations_to_load, filter_by_annotations, \
-                                num_tasks, test_mode, with_cluster_labels, with_caps, shuffle, logfile)
+                                num_tasks, test_mode, with_cluster_labels, with_caps, shuffle, logfile=logfile)
     
     def config_object_centric_queue(self, root, way_method, object_cap, shot_method, shots, video_types, \
                             subsample_factor, clip_methods, clip_length, frame_size, frame_norm_method, annotations_to_load, filter_by_annotations, \
                             num_tasks, test_mode=False, with_cluster_labels=False, with_caps=False, shuffle=False, logfile=None):
         return ObjectEpisodicDatasetQueue(root, way_method, object_cap, shot_method, shots, video_types, \
                                 subsample_factor, clip_methods, clip_length, frame_size, frame_norm_method, annotations_to_load, filter_by_annotations, \
-                                num_tasks, test_mode, with_cluster_labels, with_caps, shuffle, logfile) 
+                                num_tasks, test_mode, with_cluster_labels, with_caps, shuffle, logfile=logfile) 
