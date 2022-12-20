@@ -94,4 +94,4 @@ class OpsCounter():
         std_personalise_time = self.convert_to_minutes(np.std(self.personalise_time_per_task))
         mean_inference_time = self.convert_to_microseconds(np.mean(self.inference_time_per_frame))
         std_inference_time = self.convert_to_microseconds(np.std(self.inference_time_per_frame))
-        return f"MACs to personalise: {mean_ops} ({std_ops}) time to personalise: {mean_personalise_time} ({std_personalise_time}) inference time per frame: {mean_inference_time} ({std_inference_time}) #learnable params {mean_params} ({self.params_break_down})"
+        return f"MACs to personalise: {mean_ops} ({std_ops}) time to personalise: {mean_personalise_time} ({std_personalise_time}) inference time per frame: {mean_inference_time} ({std_inference_time}) #params {mean_params} ({self.params_break_down})"

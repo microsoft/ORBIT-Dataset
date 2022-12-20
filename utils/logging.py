@@ -42,7 +42,7 @@ def stats_to_str(stats):
     s=''
     for stat, scores in stats.items():
         if isinstance(scores, list):
-            s+='{0:}: {1:.2f} ({2:.2f}) '.format(stat, scores[0]*100, scores[1]*100)
+            s+='{0:}: {1:.2f} ({2:.2f})'.format(stat, scores[0]*100, scores[1]*100)
         else:
-            s+='{0:}: {1:.2f} '.format(stat, scores*100)
+            s+='{0:}: {1:.2f}'.format(stat, scores*100)
     return s
