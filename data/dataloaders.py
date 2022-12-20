@@ -27,7 +27,7 @@ class DataLoader():
                                         dataset_info['frame_size'],
                                         dataset_info['frame_norm_method'],
                                         dataset_info['annotations_to_load'],
-                                        dataset_info['filter_by_annotations'],
+                                        dataset_info['train_filter_by_annotations'],
                                         dataset_info['num_train_tasks'],
                                         with_cluster_labels=dataset_info['with_cluster_labels'],
                                         with_caps=dataset_info['with_train_shot_caps'],
@@ -46,7 +46,7 @@ class DataLoader():
                                         dataset_info['frame_size'],
                                         dataset_info['frame_norm_method'],
                                         dataset_info['annotations_to_load'],
-                                        dataset_info['filter_by_annotations'],
+                                        dataset_info['test_filter_by_annotations'],
                                         dataset_info['num_val_tasks'],
                                         test_mode=True,
                                         logfile=dataset_info['logfile'])
@@ -64,7 +64,7 @@ class DataLoader():
                                         dataset_info['frame_size'],
                                         dataset_info['frame_norm_method'],
                                         dataset_info['annotations_to_load'],
-                                        dataset_info['filter_by_annotations'],
+                                        dataset_info['test_filter_by_annotations'],
                                         dataset_info['num_test_tasks'],
                                         test_mode=True,
                                         logfile=dataset_info['logfile'])

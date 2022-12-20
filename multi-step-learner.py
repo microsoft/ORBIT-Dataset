@@ -63,14 +63,12 @@ class Learner:
         random.seed(self.args.seed)
         torch.manual_seed(self.args.seed)
         device_id = 'cpu'
-        self.map_location = 'cpu'
         if torch.cuda.is_available() and self.args.gpu >= 0:
             cudnn.enabled = True
             cudnn.benchmark = False
             cudnn.deterministic = True
             device_id = 'cuda:' + str(self.args.gpu)
             torch.cuda.manual_seed_all(self.args.seed)
-            self.map_location = lambda storage, loc: storage.cuda()
 
         self.device = torch.device(device_id)
         self.ops_counter = OpsCounter(count_backward=True)
@@ -101,7 +99,7 @@ class Learner:
             'frame_size': self.args.frame_size,
             'frame_norm_method': self.args.frame_norm_method,
             'annotations_to_load': self.args.annotations_to_load,
-            'filter_by_annotations': [self.args.filter_context, self.args.filter_target],
+            'test_filter_by_annotations': [self.args.test_filter_context, self.args.test_filter_target],
             'logfile': self.logfile
         }
 
@@ -137,7 +135,7 @@ class Learner:
         
         self.model = self.init_model()
         if path and os.path.exists(path): # if path exists, load from disk
-            self.model.load_state_dict(torch.load(path, map_location=self.map_location), strict=False)
+            self.model.load_state_dict(torch.load(path), strict=False)
         else:
             print_and_log(self.logfile, 'warning: saved model path could not be found; using original param initialisation.')
             path = self.checkpoint_dir
@@ -190,7 +188,7 @@ class Learner:
                 if (step+1) % self.args.num_test_tasks == 0:
                     self.test_evaluator.set_current_user(task_dict["task_id"])
                     _,_,_,current_video_stats = self.test_evaluator.get_mean_stats(current_user=True)
-                    print_and_log(self.logfile, f'{self.args.test_set} user {task_dict["task_id"]} ({self.test_evaluator.current_user+1}/{len(self.test_queue)}) stats: {stats_to_str(current_video_stats)} avg. #context clips/task: {np.mean(num_context_clips_per_task):.0f} avg. #target clips/task: {np.mean(num_target_clips_per_task):.0f}')
+                    print_and_log(self.logfile, f'{self.args.test_set} user {task_dict["task_id"]} ({self.test_evaluator.current_user+1}/{len(self.test_queue)}) stats: {stats_to_str(current_video_stats)} avg # context clips/task: {np.mean(num_context_clips_per_task):.0f} avg # target clips/task: {np.mean(num_target_clips_per_task):.0f}')
                     if (step+1) < num_test_tasks:
                         num_context_clips_per_task, num_target_clips_per_task = [], []
                         self.test_evaluator.next_user()

@@ -174,8 +174,10 @@ def parse_args(learner='default'):
                         help="Momentum for SGD optimizer during personalization (default: 0.0).")
 
     args = parser.parse_args()
-    args.filter_context = expand_issues(args.filter_context)
-    args.filter_target = expand_issues(args.filter_target)
+    args.train_filter_context = expand_issues(args.train_filter_context)
+    args.train_filter_target = expand_issues(args.train_filter_target)
+    args.test_filter_context = expand_issues(args.test_filter_context)
+    args.test_filter_target = expand_issues(args.test_filter_target)
     if args.feature_extractor == 'efficientnet_b0':
         args.frame_norm_method = 'imagenet'
     elif args.feature_extractor in ['efficientnet_v2_s', 'vit_s_32', 'vit_b_32']:
