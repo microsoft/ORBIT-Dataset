@@ -4,7 +4,7 @@ This repository contains code for the following two papers:
 - [ORBIT: A Real-World Few-Shot Dataset for Teachable Object Recognition](https://arxiv.org/abs/2104.03841). Code is provided to download and prepare the ORBIT benchmark dataset, and train/test 4 few-shot learning models on this dataset (at 84x84 frames). 
 - [Memory Efficient Meta-Learning with Large Images](https://arxiv.org/abs/2107.01105). Code is provided for Large Image and Task Episodic (LITE) training, enabling the models to be trained on large (224x224) frames on a single GPU.
 
-The code is authored by Daniela Massiceti and built using PyTorch 1.11+ and Python 3.7.
+The code is authored by Daniela Massiceti and built using PyTorch 1.13.0, TorchVision 0.14.0, and Python 3.7.
 
 <table>
   <tr>
@@ -183,18 +183,20 @@ The following checkpoints have been trained on the ORBIT train users using the a
 |           |     224    |  ViT-B-32-CLIP |         Y          |[`orbit_cluve_cnaps_vit_b_32_clip_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_cnaps_vit_b_32_clip_224_lite.pth)|
 |   SimpleCNAPs  |     224    | EfficientNet-B0   |         Y          |[`orbit_cluve_simplecnaps_efficientnet_b0_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_simplecnaps_efficientnet_b0_224_lite.pth)|
 |     |     224    | ViT-B-32-CLIP   |         Y          |[`orbit_cluve_simplecnaps_vit_b_32_clip_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_simplecnaps_vit_b_32_clip_224_lite.pth)|
-| ProtoNets |     224    |  EfficientNet-B0  |         Y          |[`orbit_cluve_protonets_efficientnet_b0_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_efficientnet_b0_224_lite.pth)| 65.18 (0.58)
-|  |     224    |  EfficientNet-V2-S  |         Y          |[`orbit_cluve_protonets_efficientnet_v2_s_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_efficientnet_v2_s_224_lite.pth)| 72.53 (0.52) 
-|  |     224    |  ViT-B-32  |         Y          |[`orbit_cluve_protonets_vit_b_32_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_vit_b_32_224_lite.pth)| 73.76 (0.51) 
-|  |     224    |  ViT-B-32-CLIP  |         Y          |[`orbit_cluve_protonets_vit_b_32_clip_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_vit_b_32_clip_224_lite.pth)|  74.57 (0.52) 
-| ProtoNets (cosine) |     224    |  EfficientNet-B0  |         Y          |[`orbit_cluve_protonets_cosine_efficientnet_b0_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_cosine_efficientnet_b0_224_lite.pth)| 66.57 (0.57)
-|           |     224    |  EfficientNet-V2-S  |         Y          |[`orbit_cluve_protonets_cosine_efficientnet_v2_s_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_cosine_efficientnet_v2_s_224_lite.pth)| 73.43 (0.54) 
-|           |     224    |  ViT-B-32  |         Y          |[`orbit_cluve_protonets_cosine_vit_b_32_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_cosine_vit_b_32_224_lite.pth)| 75.36 (0.51) 
-|           |     224    |  ViT-B-32-CLIP  |         Y          |[`orbit_cluve_protonets_cosine_vit_b_32_clip_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_cosine_vit_b_32_clip_224_lite.pth)| 73.47 (0.52) 
+| ProtoNets |     224    |  EfficientNet-B0  |         Y          |[`orbit_cluve_protonets_efficientnet_b0_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_efficientnet_b0_224_lite.pth)| 64.54 (0.58)*
+|  |     224    |  EfficientNet-V2-S  |         Y          |[`orbit_cluve_protonets_efficientnet_v2_s_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_efficientnet_v2_s_224_lite.pth)| 70.50 (0.55)* 
+|  |     224    |  ViT-B-32  |         Y          |[`orbit_cluve_protonets_vit_b_32_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_vit_b_32_224_lite.pth)| 72.78 (0.52)*
+|  |     224    |  ViT-B-32-CLIP  |         Y          |[`orbit_cluve_protonets_vit_b_32_clip_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_vit_b_32_clip_224_lite.pth)|  73.68 (0.53)* 
+| ProtoNets (cosine) |     224    |  EfficientNet-B0  |         Y          |[`orbit_cluve_protonets_cosine_efficientnet_b0_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_cosine_efficientnet_b0_224_lite.pth)| 65.78 (0.58)*
+|           |     224    |  EfficientNet-V2-S  |         Y          |[`orbit_cluve_protonets_cosine_efficientnet_v2_s_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_cosine_efficientnet_v2_s_224_lite.pth)| 71.78 (0.56)* 
+|           |     224    |  ViT-B-32  |         Y          |[`orbit_cluve_protonets_cosine_vit_b_32_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_cosine_vit_b_32_224_lite.pth)| 74.51 (0.52)* 
+|           |     224    |  ViT-B-32-CLIP  |         Y          |[`orbit_cluve_protonets_cosine_vit_b_32_clip_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_cosine_vit_b_32_clip_224_lite.pth)| 72.62 (0.53)* 
 | FineTuner |     224    |  EfficientNet-B0  |         N          | Used pre-trained extractor |
 |           |     224    |  EfficientNet-V2-S  |         N          | Used pre-trained extractor |
-|           |     224    |  ViT-B-32  |         N          | Used pre-trained extractor |
+|           |     224    |  ViT-B-32  |         N          | Used pre-trained extractor | 
 |           |     224    |  ViT-B-32-CLIP  |         N          | Used pre-trained extractor |
+| FineTuner + FiLM |     224    |  EfficientNet-B0  |         N          | Used pre-trained extractor |
+|  |     224    |  ViT-B-32  |         N          | Used pre-trained extractor |
 
 # ORBIT Few-Shot Object Recognition Challenge 2023
 
@@ -232,7 +234,7 @@ You can use `--annotations_to_load` to load the bounding box and quality issue a
 
 ## Filtering by annotations
 
-If you would like to filter tasks' context or target sets by specific quality annotations (e.g. remove all frames with no object present), you can use the `--filter_context` and `--filter_target` arguments. These arguments accept the same options as above. The filtering is applied to all context/target videos when the data loader is created (see `load_all_users` in `data/dataset.py`).
+If you would like to filter tasks' context or target sets by specific quality annotations (e.g. remove all frames with no object present), you can use `--train_filter_context`/`--tain_filter_target` to filter train tasks, or `--test_filter_context`/`--test_filter_target` to filter validation/test tasks. These arguments accept the same options as above. The filtering is applied to all context/target videos when the data loader is created (see `load_all_users` in `data/dataset.py`).
 
 # Download unfiltered ORBIT dataset
 
