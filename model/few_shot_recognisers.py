@@ -108,6 +108,8 @@ class FewShotRecogniser(nn.Module):
         if len(clips.shape) == 5:
             num_clips, clip_length, c, h, w = clips.shape
             clips = clips.reshape(num_clips*clip_length, c, h, w)
+
+        clips = clips.to(self.device, non_blocking=True)
        
         if film_dict: # if film parameters have been generated, use stateless call
             features = functional_call(self.feature_extractor, film_dict, clips, kwargs=None)
@@ -171,14 +173,6 @@ class FewShotRecogniser(nn.Module):
         """
         self.test_mode = test_mode
 
-    def _reset(self):
-        """
-        Function that resets model's task-specific parameters after a task is processed.
-        :return: Nothing.
-        """
-        self.film_dict = None
-        self.classifier.reset()
-
 class MultiStepFewShotRecogniser(FewShotRecogniser):
     """
     Few-shot classification model that is personalised in multiple forward-backward steps (e.g. MAML, FineTuner).
@@ -192,6 +186,13 @@ class MultiStepFewShotRecogniser(FewShotRecogniser):
         # configure film
         if self.adapt_features:
             self.film_parameter_sizes = get_film_parameter_sizes(self.film_parameter_names, self.feature_extractor)
+    
+    def _reset(self):
+        """
+        Function that resets model's task-specific parameters after a task is processed.
+        :return: Nothing.
+        """
+        self.classifier.reset()
 
     def _set_batch_norm_state(self, mode):
         """
@@ -236,14 +237,14 @@ class MultiStepFewShotRecogniser(FewShotRecogniser):
         for _ in range(num_grad_steps):
             for batch in range(num_batches):
                 batch_start_index, batch_end_index = get_batch_indices(batch, batch_context_set_size, self.batch_size)
-                batch_context_clips = context_clips[batch_start_index:batch_end_index].to(self.device)
-                batch_context_labels = context_labels[batch_start_index:batch_end_index].to(self.device)
+                batch_context_clips = context_clips[batch_start_index:batch_end_index]
+                batch_context_labels = context_labels[batch_start_index:batch_end_index]
                 batch_len = len(context_labels[batch_start_index:batch_end_index])
                
                 batch_context_features = self._get_features(batch_context_clips, ops_counter=ops_counter)
                 batch_context_features = self._pool_features(batch_context_features, ops_counter=ops_counter)
                 batch_context_logits = self.classifier.predict(batch_context_features, ops_counter=ops_counter)
-                loss = loss_fn(batch_context_logits, batch_context_labels)
+                loss = loss_fn(batch_context_logits, batch_context_labels.to(self.device))
                 loss *= batch_len/batch_context_set_size
                 loss.backward()
 
@@ -299,6 +300,22 @@ class SingleStepFewShotRecogniser(FewShotRecogniser):
             self.set_encoder = NullSetEncoder()
             self.film_generator = NullGenerator()
     
+    def _reset(self):
+        """
+        Function that resets model's task-specific parameters after a task is processed.
+        :return: Nothing.
+        """
+        self.film_dict = None
+        self.classifier.reset()
+
+    def _clear_caches(self):
+        """
+        Function that clears caches if training with LITE.
+        :return: Nothing.
+        """
+        self.reps_cache = None
+        self.features_cache = None
+
     def _set_batch_norm_state(self):
         """
         Function that sets batch norm modules to appropriate train() or eval() states.
@@ -332,38 +349,43 @@ class SingleStepFewShotRecogniser(FewShotRecogniser):
         """
         self._set_batch_norm_state()
         shuffled_idxs = np.random.permutation(len(context_clips))
-        H = self.num_lite_samples
-        task_embedding = self._get_task_embedding_with_lite(context_clips[shuffled_idxs][:H], shuffled_idxs)
+        grad_idxs = shuffled_idxs[0:self.num_lite_samples]
+        no_grad_idxs = shuffled_idxs[self.num_lite_samples:]
+        task_embedding = self._get_task_embedding_with_split_batch(context_clips, grad_idxs, no_grad_idxs)
         self.film_dict = self._generate_film_params(task_embedding)
-        context_features = self._get_pooled_features_with_lite(context_clips[shuffled_idxs][:H], self.film_dict, shuffled_idxs)
+        context_features = self._get_features_with_split_batch(context_clips, self.film_dict, grad_idxs, no_grad_idxs)
+        context_features = self._pool_features(context_features)
         self.classifier.configure(context_features, context_labels[shuffled_idxs])
     
-    def _get_task_embedding(self, context_clips, ops_counter=None, reduction='mean'):
+    def _get_task_embedding(self, context_clips, ops_counter=None, aggregation='mean', with_reduction=True):
         """
         Function that passes all of a task's context set through the set encoder to get a task embedding.
         :param context_clips: (torch.Tensor) Tensor of context clips, each composed of self.clip_length contiguous frames.
         :param ops_counter: (utils.OpsCounter or None) Object that counts operations performed.
-        :param reduction: (str) Method to aggregate clip encodings from self.set_encoder.
+        :param aggregation: (str) Method to aggregate clip encodings from self.set_encoder.
+        :param with_reduction: (bool) Reduce dimensionality of aggregated set encoder outputs.
         :return: (torch.Tensor or None) Task embedding.
         """
+        context_clips = context_clips.to(self.device, non_blocking=True)
         reps = self.set_encoder(context_clips)
 
         if ops_counter:
             ops_counter.compute_macs(self.set_encoder, context_clips)
 
-        return self.set_encoder.aggregate(reps, reduction=reduction)
+        return self.set_encoder.aggregate(reps, aggregation=aggregation, with_reduction=with_reduction)
 
-    def _get_task_embedding_in_batches(self, context_clips, ops_counter=None, reduction='mean'):
+    def _get_task_embedding_in_batches(self, context_clips, ops_counter=None, aggregation='mean', with_reduction=True):
         """
         Function that passes all of a task's context set through the set encoder to get a task embedding.
         :param context_clips: (torch.Tensor) Context clips, each composed of self.clip_length contiguous frames.
         :param ops_counter: (utils.OpsCounter or None) Object that counts operations performed.
-        :param reduction: (str) Method to aggregate clip encodings from self.set_encoder.
+        :param aggregation: (str) Method to aggregate clip encodings from self.set_encoder.
+        :param with_reduction: (bool) Reduce dimensionality of aggregated set encoder outputs.
         :return: (torch.Tensor or None) Task embedding.
         """
         if isinstance(self.set_encoder, NullSetEncoder):
             return None
-
+        
         reps = []
         num_clips = len(context_clips)
         num_batches = int(np.ceil(float(num_clips) / float(self.batch_size)))
@@ -378,22 +400,59 @@ class SingleStepFewShotRecogniser(FewShotRecogniser):
 
             reps.append(batch_reps)
 
-        return self.set_encoder.aggregate(reps, reduction=reduction)
+        return self.set_encoder.aggregate(reps, aggregation=aggregation, with_reduction=with_reduction)
     
-    def _get_task_embedding_with_lite(self, context_clips, idxs):
+    def _get_task_embedding_with_split_batch(self, context_clips, grad_idxs, no_grad_idxs):
         """
         Function that passes all of a task's context set through the set encoder to get a task embedding with LITE.
         :param context_clips: (torch.Tensor) Context clips, each composed of self.clip_length contiguous frames.
-        :param idxs: (torch.Tensor) Indicies of elements in context_clips to process with back-propagation enabled.
+        :param grad_idxs: (torch.Tensor) Indicies of elements in context_clips to process with back-propagation enabled.
+        :param no_grad_idxs: (torch.Tensor) Indicies of elements in context_clips to process with back-propagation disabled.
         :return: (torch.Tensor or None) Task embedding.
         """
         if isinstance(self.set_encoder, NullSetEncoder):
             return None
+
         self._set_batch_norm_state()
-        H = self.num_lite_samples
-        task_embedding_with_grads = self._get_task_embedding_in_batches(context_clips, reduction='none')
-        task_embedding_without_grads = self.cached_set_encoder_reps[idxs][H:]
-        return torch.cat((task_embedding_with_grads, task_embedding_without_grads)).mean(dim=0)
+        # cache set encoder reps if they haven't been cached yet
+        if self.reps_cache is None:
+            with torch.set_grad_enabled(False):
+                self.reps_cache = self._get_task_embedding_in_batches(context_clips, aggregation='none', with_reduction=False)
+
+        # now select some random clips that will have gradients enabled and process those
+        with torch.set_grad_enabled(True):
+            reps_with_grads = self._get_task_embedding(context_clips[grad_idxs], aggregation='none', with_reduction=False)
+      
+        # now get reps for the rest of the clips which have grads disabled
+        reps_without_grads = self.reps_cache[no_grad_idxs]
+
+        # return mean pooled reps
+        task_embedding = torch.cat((reps_with_grads, reps_without_grads)).mean(dim=0)
+        return self.set_encoder.reducer(task_embedding)
+    
+    def _get_features_with_split_batch(self, context_clips, film_dict, grad_idxs, no_grad_idxs):
+        """
+        Function that gets adapted clip features for a task's context set with LITE.
+        :param context_clips: (torch.Tensor) Context clips, each composed of self.clip_length contiguous frames.
+        :param film_dict: (dict) Parameters of all FiLM layers. Empty dict if adapt_features=False.
+        :param grad_idxs: (torch.Tensor) Indicies of elements in context_clips to process with back-propagation enabled.
+        :param no_grad_idxs: (torch.Tensor) Indicies of elements in context_clips to process with back-propagation disabled.
+        :return: (torch.Tensor) Adapted frame features per frame i.e. as (num_clips*clip_length) x (feat_dim).
+        """
+        self._set_batch_norm_state()
+        if self.features_cache is None: 
+            with torch.set_grad_enabled(False):
+                self.features_cache = self._get_features_in_batches(context_clips, film_dict)
+
+        # now select some random clips that will have gradients enabled and process those
+        with torch.set_grad_enabled(True):
+            features_with_grads = self._get_features(context_clips[grad_idxs], film_dict)
+      
+        # now get features for the rest of the clips which have grads disabled
+        features_without_grads = self.features_cache[no_grad_idxs]
+
+        # return all features
+        return torch.cat((features_with_grads, features_without_grads))
     
     def _generate_film_params(self, task_embedding, ops_counter=None):
         """
@@ -408,40 +467,6 @@ class SingleStepFewShotRecogniser(FewShotRecogniser):
             ops_counter.compute_macs(self.film_generator, task_embedding)
 
         return film_to_dict(self.film_parameter_names, film_params)
-
-    def _cache_context_outputs(self, context_clips):
-        """
-        Function that performs a forward pass with a task's entire context set with back-propagation disabled and caches the individual 1) encodings from the set encoder and 2) adapted features from the adapted feature extractor, for each clip.
-        :param context_clips: (torch.Tensor) Context clips, each composed of self.clip_length contiguous frames.
-        :return: Nothing.
-        """
-        self._set_batch_norm_state()
-        with torch.set_grad_enabled(False):
-            # cache encoding for each clip from self.set_encoder
-            self.cached_set_encoder_reps = self._get_task_embedding_in_batches(context_clips, reduction='none')
-
-            # get feature adapter parameters
-            task_embedding = self.set_encoder.aggregate(self.cached_set_encoder_reps, reduction='mean')
-            film_dict = self._generate_film_params(task_embedding)
-
-            # cache adapted features for each clip
-            context_features = self._get_features_in_batches(context_clips, film_dict)
-            self.cached_context_features = self._pool_features(context_features)
-
-    def _get_pooled_features_with_lite(self, context_clips, film_dict, idxs):
-        """
-        Function that gets adapted clip features for a task's context set with LITE.
-        :param context_clips: (torch.Tensor) Context clips, each composed of self.clip_length contiguous frames.
-        :param film_dict: (dict) Parameters of all FiLM layers. Empty dict if adapt_features=False.
-        :param idxs: (torch.Tensor) Indicies of elements in context_clips to process with back-propagation enabled.
-        :return: (torch.Tensor) Adapted frame features pooled per clip i.e. as (num_clips) x (feat_dim).
-        """
-        self._set_batch_norm_state()
-        H = self.num_lite_samples
-        context_features_with_grads = self._get_features_in_batches(context_clips, film_dict)
-        context_features_with_grads = self._pool_features(context_features_with_grads)
-        context_features_without_grads = self.cached_context_features[idxs][H:]
-        return torch.cat((context_features_with_grads, context_features_without_grads))
 
     def predict(self, target_clips):
         """

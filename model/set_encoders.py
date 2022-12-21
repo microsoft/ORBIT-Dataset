@@ -61,28 +61,29 @@ class SetEncoder(nn.Module):
         :param x: (torch.Tensor) Set of elements (for clips it has the shape: batch x clip length x C x H x W).
         :return: (torch.Tensor) Individual element embeddings.
         """
-        with torch.no_grad():
-            x = self._flatten(x)
-            x = self.encoder(x)
-        return self.reducer(x)
-
+        x = self._flatten(x)
+        return self.encoder(x)
+    
     def _flatten(self, x):
         if x.dim() == 5:
             return x.flatten(end_dim=1)
         else:
             return x
 
-    def aggregate(self, x, reduction='mean'):
+    def aggregate(self, x, aggregation='mean', with_reduction=True):
         """
         Function that aggregates the encoded elements in x.
         :param x: (torch.Tensor or list of torch.Tensor) Set of encoded elements (i.e. from forward()).
-        :param reduction: (str) If 'mean', average the encoded elements in x, otherwise do not average.
+        :param aggregation: (str) If 'mean', average the encoded elements in x, otherwise do not average.
+        :param with_reduction: (bool) If True, reduce dimensionality after aggregation, else do not reduce.
         :return: (torch.Tensor) Mean representation of the set as a single vector if reduction = 'mean', otherwise as a set of encoded elements.
         """
         if not isinstance(x, torch.Tensor):
             x = torch.cat(x, dim=0)
-        if reduction == 'mean':
+        if aggregation == 'mean':
             x = torch.mean(x, dim=0, keepdim=True)
+        if with_reduction:
+            x = self.reducer(x)
         return x
 
     @property
@@ -96,7 +97,7 @@ class NullSetEncoder(nn.Module):
     def forward(self, x):
         return None
 
-    def aggregate(self, x, reduction='mean'):
+    def aggregate(self, x, aggregation='mean', with_reduction=True):
         return None
     
     @property

@@ -214,8 +214,7 @@ class Learner:
     def train_task_with_lite(self, task_dict):
         context_clips, context_paths, context_labels, target_clips, target_paths, target_labels, object_list = unpack_task(task_dict, self.device)
 
-        # compute and save personalise outputs of whole context set with back-propagation disabled
-        self.model._cache_context_outputs(context_clips)
+        self.model._clear_caches()
 
         task_loss = 0
         target_logits, target_boxes_pred = [], []
@@ -225,14 +224,14 @@ class Learner:
             self.model.personalise_with_lite(context_clips, context_labels)
 
             batch_start_index, batch_end_index = get_batch_indices(batch, num_clips, self.args.batch_size)
-            batch_target_clips = target_clips[batch_start_index:batch_end_index].to(device=self.device)
-            batch_target_labels = target_labels[batch_start_index:batch_end_index].to(device=self.device)
+            batch_target_clips = target_clips[batch_start_index:batch_end_index]
+            batch_target_labels = target_labels[batch_start_index:batch_end_index]
 
             batch_target_logits = self.model.predict_a_batch(batch_target_clips)
             target_logits.extend(batch_target_logits.detach())
 
             loss_scaling = len(context_labels) / (self.args.num_lite_samples * self.args.tasks_per_batch)
-            batch_loss = loss_scaling * self.loss(batch_target_logits, batch_target_labels)
+            batch_loss = loss_scaling * self.loss(batch_target_logits, batch_target_labels.to(self.device))
             batch_loss += 0.001 * self.model.film_generator.regularization_term()
             batch_loss.backward(retain_graph=False)
             task_loss += batch_loss.detach()
