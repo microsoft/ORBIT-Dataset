@@ -64,7 +64,7 @@ def parse_args(learner='default'):
                         help="Video type for target set (default: clutter).")
     parser.add_argument("--subsample_factor", type=int, default=30,
                         help="Factor to subsample video by if sampling clip uniformly (default: 30).")
-    parser.add_argument("--train_context_clip_method", type=str, default='random', choices=['random', 'random_200', 'max', 'uniform'],
+    parser.add_argument("--train_context_clip_method", type=str, default='uniform', choices=['random', 'random_200', 'max', 'uniform'],
                         help="Method to sample clips per context video for a train task (default: uniform).")
     parser.add_argument("--train_target_clip_method", type=str, default='random', choices=['random', 'random_200', 'max'],
                         help="Method to sample clips per target video for a train task (default: random).")
@@ -78,10 +78,14 @@ def parse_args(learner='default'):
                         help="Frame size (default: 224).")
     parser.add_argument("--annotations_to_load", nargs='+', type=str, default=[], choices=FRAME_ANNOTATION_OPTIONS+BOUNDING_BOX_OPTIONS,
                         help="Annotations to load per frame (default: None).")
-    parser.add_argument("--filter_context", nargs='+', type=str, default=[], choices=ALL_FRAME_ANNOTATION_OPTIONS,
-                        help="Criteria to filter context frames by (default: []).")
-    parser.add_argument("--filter_target", nargs='+', type=str, default=[], choices=ALL_FRAME_ANNOTATION_OPTIONS,
-                        help="Criteria to filter target frames by (default: []).")
+    parser.add_argument("--train_filter_context", nargs='+', type=str, default=[], choices=ALL_FRAME_ANNOTATION_OPTIONS,
+                        help="Criteria to filter context frames in train tasks by (default: []).")
+    parser.add_argument("--train_filter_target", nargs='+', type=str, default=[], choices=ALL_FRAME_ANNOTATION_OPTIONS,
+                        help="Criteria to filter target frames in validation/test tasks by (default: []).")
+    parser.add_argument("--test_filter_context", nargs='+', type=str, default=[], choices=ALL_FRAME_ANNOTATION_OPTIONS,
+                        help="Criteria to filter context frames in validation/test tasks by (default: []).")
+    parser.add_argument("--test_filter_target", nargs='+', type=str, default=[], choices=ALL_FRAME_ANNOTATION_OPTIONS,
+                        help="Criteria to filter target frames in train tasks by (default: []).")
     parser.add_argument("--train_task_type", type=str, default="user_centric", choices=["user_centric", "object_centric"],
                         help="Sample train tasks as user-centric or object-centric (default: user_centric).")
     parser.add_argument("--num_train_tasks", type=int, default=50,
@@ -108,8 +112,8 @@ def parse_args(learner='default'):
                         help="Print training by step (otherwise print by epoch).")
 
     # optimization parameters
-    parser.add_argument("--epochs", "-e", type=int, default=25,
-                        help="Number of training epochs (default: 25).")
+    parser.add_argument("--epochs", "-e", type=int, default=15,
+                        help="Number of training epochs (default: 15).")
     parser.add_argument("--validation_on_epoch", type=int, default=1,
                         help="Epoch to turn on validation (default: 1).")
     parser.add_argument("--learning_rate", "-lr", type=float, default=5e-6,
