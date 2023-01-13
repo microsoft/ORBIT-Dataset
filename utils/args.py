@@ -68,8 +68,8 @@ def parse_args(learner='default'):
                         help="Method to sample clips per context video for a train task (default: uniform).")
     parser.add_argument("--train_target_clip_method", type=str, default='random', choices=['random', 'random_200', 'max'],
                         help="Method to sample clips per target video for a train task (default: random).")
-    parser.add_argument("--test_context_clip_method", type=str, default='random', choices=['random', 'random_200', 'max', 'uniform'],
-                        help="Method to sample clips per context video for a test/validation task (default: random).")
+    parser.add_argument("--test_context_clip_method", type=str, default='uniform', choices=['random', 'random_200', 'max', 'uniform'],
+                        help="Method to sample clips per context video for a test/validation task (default: uniform).")
     parser.add_argument("--test_target_clip_method", type=str, default='random_200', choices=['random', 'random_200', 'max'],
                         help="Method to sample clips per target video for a test/validation task (default: random_200).")
     parser.add_argument("--clip_length", type=int, default=1,
@@ -90,8 +90,8 @@ def parse_args(learner='default'):
                         help="Sample train tasks as user-centric or object-centric (default: user_centric).")
     parser.add_argument("--num_train_tasks", type=int, default=50,
                         help="Number of train tasks per user (if train_task_type = user_centric) or per object (if train_task_type = object_centric) per epoch (default: 50).")
-    parser.add_argument("--num_val_tasks", type=int, default=15,
-                        help="Number of validation tasks per user (default: 15).")
+    parser.add_argument("--num_val_tasks", type=int, default=30,
+                        help="Number of validation tasks per user (default: 30).")
     parser.add_argument("--num_test_tasks", type=int, default=50,
                         help="Number of test tasks per user (default: 50).")
 
@@ -112,8 +112,8 @@ def parse_args(learner='default'):
                         help="Print training by step (otherwise print by epoch).")
 
     # optimization parameters
-    parser.add_argument("--epochs", "-e", type=int, default=15,
-                        help="Number of training epochs (default: 15).")
+    parser.add_argument("--epochs", "-e", type=int, default=30,
+                        help="Number of training epochs (default: 30).")
     parser.add_argument("--validation_on_epoch", type=int, default=1,
                         help="Epoch to turn on validation (default: 1).")
     parser.add_argument("--learning_rate", "-lr", type=float, default=5e-6,
@@ -162,8 +162,8 @@ def parse_args(learner='default'):
         finetune_group = parser.add_argument_group("Finetuning hyperparameters to use for personalization")
         finetune_group.add_argument("--personalize_num_grad_steps", type=int, default=50,
                         help="Number of gradient steps for personalization (default: 50).")
-        finetune_group.add_argument("--personalize_learning_rate", type=float, default=0.007,
-                        help="Learning rate for personalization (default: 0.007).")
+        finetune_group.add_argument("--personalize_learning_rate", type=float, default=0.001,
+                        help="Learning rate for personalization (default: 0.001).")
         finetune_group.add_argument("--personalize_optimizer", type=str, choices=["sgd", "adam"], default="adam",
                         help="Optimizer type for personalization (default: adam).")
         finetune_group.add_argument("--personalize_weight_decay", type=float, default=0.0,
