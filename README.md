@@ -180,24 +180,24 @@ The CPU memory requirements can be reduced by:
 
 The following checkpoints have been trained on the ORBIT train users using the arguments specified above. The models can be run in test-only mode using the same arguments as above except adding `--mode test` and providing the path to the checkpoint as `--model_path path/to/checkpoint.pt`. In principle, the memory required for testing should be significantly less than training so should be possible on 1x 12-16GB GPU (or CPU with ``--gpu -1``). The ``--batch_size`` flag can be used to further reduce memory requirements.
 
-|   Model   | Frame size | Feature extractor |  Trained with LITE | Trained with clean/clutter (context/target) videos | Frame Accuracy (95% c.i) |
+|   Model   | Frame size | Feature extractor |  Trained with LITE | Frame Accuracy (95% c.i) | Trained with clean/clutter (context/target) videos |
 |:---------:|:----------:|:-----------------:|:------------------:|:-------------------:|:------------------:|
 |   CNAPs        |     224    |  EfficientNet-B0  |         Y          | Coming soon |
 |           |     224    |  ViT-B-32-CLIP |         Y          | Coming soon|
 |   SimpleCNAPs  |     224    | EfficientNet-B0   |         Y          | Coming soon|
 |     |     224    | ViT-B-32-CLIP   |         Y          | Coming soon|
-| ProtoNets |     224    |  EfficientNet-B0  |         Y          |[`orbit_cluve_protonets_efficientnet_b0_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_efficientnet_b0_224_lite.pth)| 67.91 (0.56)
-|  |     224    |  EfficientNet-V2-S  |         Y          |[`orbit_cluve_protonets_efficientnet_v2_s_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_efficientnet_v2_s_224_lite.pth)| 72.76 (0.53)
-|  |     224    |  ViT-B-32  |         Y          |[`orbit_cluve_protonets_vit_b_32_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_vit_b_32_224_lite.pth)| 73.53 (0.51)
-|  |     224    |  ViT-B-32-CLIP  |         Y          |[`orbit_cluve_protonets_vit_b_32_clip_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_vit_b_32_clip_224_lite.pth)|  73.95 (0.52)
-| ProtoNets (cosine) |     224    |  EfficientNet-B0  |         Y          |[`orbit_cluve_protonets_cosine_efficientnet_b0_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_cosine_efficientnet_b0_224_lite.pth)| 67.48 (0.57)
-|           |     224    |  EfficientNet-V2-S  |         Y          |[`orbit_cluve_protonets_cosine_efficientnet_v2_s_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_cosine_efficientnet_v2_s_224_lite.pth)| 73.10 (0.54)
-|           |     224    |  ViT-B-32  |         Y          |[`orbit_cluve_protonets_cosine_vit_b_32_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_cosine_vit_b_32_224_lite.pth)| 75.38 (0.51)
-|           |     224    |  ViT-B-32-CLIP  |         Y          |[`orbit_cluve_protonets_cosine_vit_b_32_clip_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_cosine_vit_b_32_clip_224_lite.pth)| 73.54 (0.52) 
-| FineTuner |     224    |  EfficientNet-B0  |         N          | Used pre-trained extractor | 59.60 (0.57)
-|           |     224    |  ViT-B-32-CLIP  |         N          | Used pre-trained extractor | 71.89 (0.56)
-| FineTuner + FiLM |     224    |  EfficientNet-B0  |         N          | Used pre-trained extractor | 61.05 (0.57)
-|  |     224    |  ViT-B-32-CLIP  |         N          | Used pre-trained extractor | 72.65 (0.55)
+| ProtoNets |     224    |  EfficientNet-B0  |         Y          | 67.91 (0.56) |[`orbit_cluve_protonets_efficientnet_b0_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_efficientnet_b0_224_lite.pth)
+|  |     224    |  EfficientNet-V2-S  |         Y          | 72.76 (0.53) |[`orbit_cluve_protonets_efficientnet_v2_s_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_efficientnet_v2_s_224_lite.pth)
+|  |     224    |  ViT-B-32  |         Y          | 73.53 (0.51) |[`orbit_cluve_protonets_vit_b_32_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_vit_b_32_224_lite.pth)
+|  |     224    |  ViT-B-32-CLIP  |         Y          |  73.95 (0.52) |[`orbit_cluve_protonets_vit_b_32_clip_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_vit_b_32_clip_224_lite.pth)
+| ProtoNets (cosine) |     224    |  EfficientNet-B0  |         Y          | 67.48 (0.57) |[`orbit_cluve_protonets_cosine_efficientnet_b0_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_cosine_efficientnet_b0_224_lite.pth)
+|           |     224    |  EfficientNet-V2-S  |         Y          | 73.10 (0.54) |[`orbit_cluve_protonets_cosine_efficientnet_v2_s_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_cosine_efficientnet_v2_s_224_lite.pth)
+|           |     224    |  ViT-B-32  |         Y          | 75.38 (0.51) |[`orbit_cluve_protonets_cosine_vit_b_32_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_cosine_vit_b_32_224_lite.pth)
+|           |     224    |  ViT-B-32-CLIP  |         Y          | 73.54 (0.52) |[`orbit_cluve_protonets_cosine_vit_b_32_clip_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_cosine_vit_b_32_clip_224_lite.pth)
+| FineTuner |     224    |  EfficientNet-B0  |         N           | 59.60 (0.57) | Used pre-trained extractor
+|           |     224    |  ViT-B-32-CLIP  |         N           | 71.89 (0.56) | Used pre-trained extractor
+| FineTuner + FiLM |     224    |  EfficientNet-B0  |         N       | 61.05 (0.57) | Used pre-trained extractor
+|  |     224    |  ViT-B-32-CLIP  |         N           | 72.65 (0.55) | Used pre-trained extractor
 
 # ORBIT Few-Shot Object Recognition Challenge 2023
 
