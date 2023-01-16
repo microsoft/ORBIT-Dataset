@@ -4,6 +4,14 @@ trigger:
 pool:
   vmImage: 'windows-latest'
 
+schedules:
+- cron: "0 12 * * 0"
+  displayName: Weekly Monday build
+  branches:
+   include:
+   - main
+  always: true
+
 steps:
 - task: CredScan@2
   inputs: 
