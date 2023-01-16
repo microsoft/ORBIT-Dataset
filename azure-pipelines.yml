@@ -20,7 +20,7 @@ steps:
     querySuite: 'Recommended'
     timeout: '1800'
     ram: '16384'
-    addProjectDirToScanningExclusionList: true 
+    addProjectDirToScanningExclusionList: true
 - task: ComponentGovernanceComponentDetection@0
   inputs:
     scanType: 'Register'
