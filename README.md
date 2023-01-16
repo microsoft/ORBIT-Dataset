@@ -4,7 +4,7 @@ This repository contains code for the following two papers:
 - [ORBIT: A Real-World Few-Shot Dataset for Teachable Object Recognition](https://arxiv.org/abs/2104.03841). Code is provided to download and prepare the ORBIT benchmark dataset, and train/test 4 few-shot learning models on this dataset (at 84x84 frames). 
 - [Memory Efficient Meta-Learning with Large Images](https://arxiv.org/abs/2107.01105). Code is provided for Large Image and Task Episodic (LITE) training, enabling the models to be trained on large (224x224) frames on a single GPU.
 
-The code is authored by Daniela Massiceti and built using PyTorch 1.13.1, TorchVision 0.14.0, and Python 3.7.
+The code is authored by Daniela Massiceti and built using PyTorch 1.13.1, TorchVision 0.14.1, and Python 3.7.
 
 <table>
   <tr>
