@@ -269,7 +269,10 @@ class Learner:
                     num_target_clips += len(video_clips)
 
                 # reset task's params
-                self.model._reset()
+                self.model._reset() 
+                # log number of clips per task
+                num_context_clips_per_task.append(num_context_clips)
+                num_target_clips_per_task.append(num_target_clips)
 
                 # if this is the user's last task, get the average performance for the user over all their tasks
                 if (step+1) % self.args.num_val_tasks == 0:
@@ -277,11 +280,9 @@ class Learner:
                     _,_,_,current_video_stats = self.validation_evaluator.get_mean_stats(current_user=True)
                     print_and_log(self.logfile, f'validation user {task_dict["task_id"]} ({self.validation_evaluator.current_user+1}/{len(self.validation_queue)}) stats: {stats_to_str(current_video_stats)} avg # context clips/task: {np.mean(num_context_clips_per_task):.0f} avg # target clips/task: {np.mean(num_target_clips_per_task):.0f}')
                     if (step+1) < num_val_tasks:
-                        num_context_clips_per_task, num_target_clips_per_task = [], []
+                        num_context_clips_per_task, num_target_clips_per_task = [], [] # reset per user
                         self.validation_evaluator.next_user()
                 else:
-                    num_context_clips_per_task.append(num_context_clips)
-                    num_target_clips_per_task.append(num_target_clips)
                     self.validation_evaluator.next_task()
 
             stats_per_user, stats_per_obj, stats_per_task, stats_per_video = self.validation_evaluator.get_mean_stats()
@@ -337,6 +338,9 @@ class Learner:
                 self.model._reset()
                 # add task's ops to self.ops_counter
                 self.ops_counter.task_complete()
+                # log number of clips per task
+                num_context_clips_per_task.append(num_context_clips)
+                num_target_clips_per_task.append(num_target_clips)
 
                 # if this is the user's last task, get the average performance for the user over all their tasks
                 if (step+1) % self.args.num_test_tasks == 0:
@@ -344,11 +348,9 @@ class Learner:
                     _,_,_,current_video_stats = self.test_evaluator.get_mean_stats(current_user=True)
                     print_and_log(self.logfile, f'{self.args.test_set} user {task_dict["task_id"]} ({self.test_evaluator.current_user+1}/{len(self.test_queue)}) stats: {stats_to_str(current_video_stats)} avg # context clips/task: {np.mean(num_context_clips_per_task):.0f} avg # target clips/task: {np.mean(num_target_clips_per_task):.0f}')
                     if (step+1) < num_test_tasks:
-                        num_context_clips_per_task, num_target_clips_per_task = [], []
+                        num_context_clips_per_task, num_target_clips_per_task = [], [] # reset per user
                         self.test_evaluator.next_user()
                 else:
-                    num_context_clips_per_task.append(num_context_clips)
-                    num_target_clips_per_task.append(num_target_clips)
                     self.test_evaluator.next_task()
             
             stats_per_user, stats_per_obj, stats_per_task, stats_per_video = self.test_evaluator.get_mean_stats()
