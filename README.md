@@ -194,10 +194,10 @@ The following checkpoints have been trained on the ORBIT train users using the a
 |           |     224    |  EfficientNet-V2-S  |         Y          | 73.10 (0.54) |[`orbit_cluve_protonets_cosine_efficientnet_v2_s_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_cosine_efficientnet_v2_s_224_lite.pth)
 |           |     224    |  ViT-B-32  |         Y          | 75.38 (0.51) |[`orbit_cluve_protonets_cosine_vit_b_32_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_cosine_vit_b_32_224_lite.pth)
 |           |     224    |  ViT-B-32-CLIP  |         Y          | 73.54 (0.52) |[`orbit_cluve_protonets_cosine_vit_b_32_clip_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_cosine_vit_b_32_clip_224_lite.pth)
-| FineTuner |     224    |  EfficientNet-B0  |         N           | 59.60 (0.57) | Used pre-trained extractor
-|           |     224    |  ViT-B-32-CLIP  |         N           | 71.89 (0.56) | Used pre-trained extractor
-| FineTuner + FiLM |     224    |  EfficientNet-B0  |         N       | 61.05 (0.57) | Used pre-trained extractor
-|  |     224    |  ViT-B-32-CLIP  |         N           | 72.65 (0.55) | Used pre-trained extractor
+| FineTuner |     224    |  EfficientNet-B0  |         N           | 64.57 (0.56) | Used pre-trained extractor
+|           |     224    |  ViT-B-32-CLIP  |         N           | 71.31 (0.55) | Used pre-trained extractor
+| FineTuner + FiLM |     224    |  EfficientNet-B0  |         N       | 66.63 (0.58) | Used pre-trained extractor
+|  |     224    |  ViT-B-32-CLIP  |         N           | 71.86 (0.55) | Used pre-trained extractor
 
 # ORBIT Few-Shot Object Recognition Challenge 2023
 

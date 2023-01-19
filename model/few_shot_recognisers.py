@@ -172,6 +172,15 @@ class FewShotRecogniser(nn.Module):
         :return: Nothing.
         """
         self.test_mode = test_mode
+    
+    def _set_batch_norm_state(self):
+        """
+        Function that sets batch norm modules to appropriate train() or eval() states.
+        :return: Nothing.
+        """
+        self.eval()
+        if self.learn_extractor and not self.test_mode: # if meta-training and extractor is unfrozen, then it must be in train() mode
+            self.feature_extractor.train()
 
 class MultiStepFewShotRecogniser(FewShotRecogniser):
     """
@@ -194,22 +203,6 @@ class MultiStepFewShotRecogniser(FewShotRecogniser):
         """
         self.classifier.reset()
 
-    def _set_batch_norm_state(self, mode):
-        """
-        Function that sets batch norm modules to appropriate train() or eval() state.
-        :param mode: (str) Whether personalising on context set, or inferring on target set. Options: ['personalise', 'inference'].
-        :return: Nothing.
-        """
-        if mode == 'personalise':
-            self.feature_extractor.train() # if finetuning film layers, normalisation (i.e. film) layers must be in train mode
-        elif mode == 'inference':
-            self.feature_extractor.eval() # use trained batch norm buffers
-        else:
-            raise ValueError(f"Batch norm state {mode} not valid.")
-        
-        if self.learn_extractor and not self.test_mode: # if meta-training and extractor is unfrozen, then it must be in train() mode
-            self.feature_extractor.train()
-    
     def personalise(self, context_clips, context_labels, learning_args, ops_counter=None):
         """
         Function that learns a new task by taking a fixed number of gradient steps on the task's full context set. For each task, a new linear classification layer is added (and FiLM layers if self.adapt_features == True).
@@ -219,7 +212,7 @@ class MultiStepFewShotRecogniser(FewShotRecogniser):
         :param ops_counter: (utils.OpsCounter or None) Object that counts operations performed.
         :return: Nothing.
         """
-        self._set_batch_norm_state(mode='personalise')
+        self._set_batch_norm_state()
 
         num_grad_steps = learning_args.pop('num_grad_steps')
         learning_rate = learning_args.pop('learning_rate')
@@ -258,7 +251,7 @@ class MultiStepFewShotRecogniser(FewShotRecogniser):
         :param ops_counter: (utils.OpsCounter or None) Object that counts operations performed.
         :return: (torch.Tensor) Logits over object classes for each clip in clips.
         """
-        self._set_batch_norm_state(mode='inference')
+        self._set_batch_norm_state()
         features = self._get_features_in_batches(clips, ops_counter=ops_counter)
         features = self._pool_features(features, ops_counter=ops_counter)
         return self.classifier.predict(features, ops_counter=ops_counter)
@@ -315,15 +308,6 @@ class SingleStepFewShotRecogniser(FewShotRecogniser):
         """
         self.reps_cache = None
         self.features_cache = None
-
-    def _set_batch_norm_state(self):
-        """
-        Function that sets batch norm modules to appropriate train() or eval() states.
-        :return: Nothing.
-        """
-        self.eval()
-        if self.learn_extractor and not self.test_mode: # if meta-training and extractor is unfrozen, then it must be in train() mode
-            self.feature_extractor.train()
 
     def personalise(self, context_clips, context_labels, ops_counter=None):
         """
