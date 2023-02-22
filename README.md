@@ -203,7 +203,7 @@ The following checkpoints have been trained on the ORBIT train users using the a
 
 The [VizWiz workshop](https://vizwiz.org/workshops/2023-workshop/) is hosting the ORBIT Few-Shot Object Recognition Challenge at [CVPR 2023](https://cvpr2023.thecvf.com). The Challenge will run from 12 January 2023 9am CT to Friday 5 May 2023 9am CT. 
 
-To participate, visit the [Challenge evaluation server](https://eval.ai/web/challenges/challenge-page/1896/overview) which is hosted on EvalAI. Here you will find all details about the Challenge, including the competition rules and how to register your team. The winning team will be invited to give a talk at the VizWiz workshop at CVPR 2023.
+To participate, visit the [Challenge evaluation server](https://eval.ai/web/challenges/challenge-page/1896/overview) which is hosted on EvalAI. Here you will find all details about the Challenge, including the competition rules and how to register your team. The winning team will be invited to give an in-person or virtual talk at the VizWiz workshop at CVPR 2023. They will also be invited to a virtual event hosted by Microsoft Research in July 2023 to share their work with a wide audience of internal research and product teams working in machine learning and computer vision - a great opportunity to gain industry visibility for future job applicants.
 
 We have provided [orbit_challenge_getting_started.ipynb](https://github.com/microsoft/ORBIT-Dataset/blob/master/orbit_challenge_getting_started.ipynb) to help get you started. This starter task will step you through how to load the ORBIT validation set, run it through a pre-trained model, and save the results which you can then upload to the evaluation server.
 
