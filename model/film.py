@@ -73,30 +73,22 @@ def get_film_parameter_names(feature_extractor_name, feature_extractor):
             parameter_list.append(name + '.bias')
     return parameter_list
 
-def enable_film(film_parameter_names, feature_extractor):
+def unfreeze_film(film_parameter_names, feature_extractor):
     for name, param in feature_extractor.named_parameters():
         if name in film_parameter_names:
             param.requires_grad = True
 
 def get_film_parameters(film_parameter_names, feature_extractor):
-    film_params = []
+    film_params = {}
     if not film_parameter_names == None:
         for name, param in feature_extractor.named_parameters():
             if name in film_parameter_names:
-                film_params.append(param.detach().clone())
+                film_params[name] = param.detach().clone()
     return film_params
 
 def get_film_parameter_sizes(film_parameter_names, feature_extractor):
-    film_params_sizes = []
+    film_params_sizes = {}
     for name, param in feature_extractor.named_parameters():
         if name in film_parameter_names:
-            film_params_sizes.append(len(param))
+            film_params_sizes[name] = len(param)
     return film_params_sizes
-
-def film_to_dict(film_parameter_names, film_parameters):
-    film_dict = {}
-    if not film_parameter_names == None:
-        assert len(film_parameter_names) == len(film_parameters)
-        for i in range(len(film_parameter_names)):
-            film_dict[film_parameter_names[i]] = film_parameters[i]
-    return film_dict

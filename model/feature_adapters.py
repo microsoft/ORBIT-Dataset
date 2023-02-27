@@ -39,20 +39,22 @@ class FilmParameterGenerator(nn.Module):
     """
     def __init__(self, film_parameter_sizes, initial_film_parameters, pooled_size, hidden_size):
         super().__init__()
-        self.num_film_layers = len(film_parameter_sizes)
         self.initial_film_parameters = initial_film_parameters
+        self.film_parameter_names = list(self.initial_film_parameters.keys())
+        self.film_parameter_names.sort()
         self.generators = nn.ModuleList()
         self.regularizers = nn.ParameterList()
-        for i in range(self.num_film_layers):
-            self.generators.append(self._make_generator(pooled_size, hidden_size, film_parameter_sizes[i]))
-            self.regularizers.append(nn.Parameter(nn.init.normal_(torch.empty(film_parameter_sizes[i]), 0, 0.001),
+
+        for i, film_param_name in enumerate(self.film_parameter_names):
+            self.generators.append(self._make_generator(pooled_size, hidden_size, film_parameter_sizes[film_param_name]))
+            self.regularizers.append(nn.Parameter(nn.init.normal_(torch.empty(film_parameter_sizes[film_param_name]), 0, 0.001),
                                                   requires_grad=True))
 
             self.l2_term = 0.0
-    
+
     def _apply(self, fn): # ensures self.initial_film_parameters is moved to device
         super(FilmParameterGenerator, self)._apply(fn)
-        self.initial_film_parameters = [fn(p) for p in self.initial_film_parameters]
+        self.initial_film_parameters = { k: fn(v) for k,v in self.initial_film_parameters.items()}
         return self
 
     def _make_generator(self, pooled_size, hidden_size, out_size):
@@ -62,13 +64,18 @@ class FilmParameterGenerator(nn.Module):
         return self.l2_term
 
     def forward(self, x):
-        film_parameters = []
+        film_dict = {}
         self.l2_term = 0.0
-        for i in range(self.num_film_layers):
-            generated_values = self.generators[i](x).squeeze()
-            self.l2_term += (generated_values ** 2).sum()  # not exactly the same as weight decay as we are not taking the square root
-            film_parameters.append(generated_values + self.initial_film_parameters[i])
-        return film_parameters
+        for i, film_param_name in enumerate(self.film_parameter_names):
+            if 'weight' in film_param_name:
+                generated_weight = self.generators[i](x).squeeze() * self.regularizers[i] + torch.ones_like(self.regularizers[i])
+                new_film_param = self.initial_film_parameters[film_param_name] * generated_weight
+            elif 'bias' in film_param_name:
+                generated_bias = self.generators[i](x).squeeze() * self.regularizers[i]
+                new_film_param = self.initial_film_parameters[film_param_name] + generated_bias
+            self.l2_term += (self.regularizers[i] ** 2).sum()  # not exactly the same as weight decay as we are not taking the square root
+            film_dict[film_param_name] = new_film_param
+        return film_dict
     
 class NullGenerator(nn.Module):
     """

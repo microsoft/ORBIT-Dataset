@@ -38,7 +38,7 @@ class SetEncoder(nn.Module):
     """
     Simple set encoder implementing DeepSets (https://arxiv.org/abs/1703.06114). Used for modeling permutation-invariant representations on sets (mainly for extracting task-level embedding of context sets).
     """
-    def __init__(self, encoder_name='efficientnet_b0', task_embedding_dim=64):
+    def __init__(self, encoder_name='efficientnet_b0', task_embedding_dim=1280):
         """
         Creates an instance of SetEncoder.
         :return: Nothing.
@@ -53,7 +53,6 @@ class SetEncoder(nn.Module):
                                     with_film=False,
                                     learn_extractor=False
                                     )
-        self.reducer = nn.Linear(self.encoder.output_size, self.task_embedding_dim)                                
  
     def forward(self, x):
         """
@@ -70,21 +69,21 @@ class SetEncoder(nn.Module):
         else:
             return x
 
-    def aggregate(self, x, aggregation='mean', with_reduction=True):
+    def aggregate(self, x, aggregation='mean'):
         """
         Function that aggregates the encoded elements in x.
         :param x: (torch.Tensor or list of torch.Tensor) Set of encoded elements (i.e. from forward()).
-        :param aggregation: (str) If 'mean', average the encoded elements in x, otherwise do not average.
-        :param with_reduction: (bool) If True, reduce dimensionality after aggregation, else do not reduce.
-        :return: (torch.Tensor) Mean representation of the set as a single vector if reduction = 'mean', otherwise as a set of encoded elements.
+        :param aggregation: (str) If 'mean', average the encoded elements in x. If 'none', do not average.
+        :return: (torch.Tensor) Mean representation of the set as a single vector if reduction = 'mean'. If 'none,' returns a set of encoded elements.
         """
         if not isinstance(x, torch.Tensor):
             x = torch.cat(x, dim=0)
         if aggregation == 'mean':
-            x = torch.mean(x, dim=0, keepdim=True)
-        if with_reduction:
-            x = self.reducer(x)
-        return x
+            return torch.mean(x, dim=0, keepdim=True)
+        elif aggregation == 'none':
+            return x
+        else:
+            raise ValueError(f'Aggregation method {aggregation} not valid!')
 
     @property
     def output_size(self):
@@ -97,7 +96,7 @@ class NullSetEncoder(nn.Module):
     def forward(self, x):
         return None
 
-    def aggregate(self, x, aggregation='mean', with_reduction=True):
+    def aggregate(self, x, aggregation='mean'):
         return None
     
     @property

@@ -32,7 +32,7 @@ from timm.models.registry import get_pretrained_cfg
 from timm.models.efficientnet import tf_efficientnet_b0, tf_efficientnetv2_s_in21k
 from timm.models.vision_transformer import vit_small_patch32_224_in21k, vit_base_patch32_224_in21k, vit_base_patch32_224_clip_laion2b
 
-from model.film import enable_film, get_film_parameter_names, tag_film_layers
+from model.film import get_film_parameter_names, tag_film_layers
 
 def create_feature_extractor(feature_extractor_name: str, pretrained: bool, with_film: bool=False, learn_extractor: bool=True):
  
@@ -70,14 +70,11 @@ def create_feature_extractor(feature_extractor_name: str, pretrained: bool, with
     
     film_param_names = None
     if with_film:
-
         tag_film_layers(feature_extractor_name, feature_extractor)
         film_param_names = get_film_parameter_names(
             feature_extractor_name=feature_extractor_name,
             feature_extractor=feature_extractor
         )
-
-        enable_film(film_param_names, feature_extractor)
 
     return feature_extractor, film_param_names
     

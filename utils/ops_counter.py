@@ -36,7 +36,7 @@ class OpsCounter():
                 for param in base_model.set_encoder.parameters():
                     set_encoder_params += param.numel()
             # film params
-            film_params = sum(base_model.film_parameter_sizes)
+            film_params = sum(base_model.film_parameter_sizes.values())
 
         self.base_params_counter = feature_extractor_params + classifier_params + film_generator_params + set_encoder_params + film_params
         feature_extractor_params, classifier_params, film_generator_params, set_encoder_params, film_params = clever_format([feature_extractor_params, classifier_params, film_generator_params, set_encoder_params, film_params], "%.2f")
