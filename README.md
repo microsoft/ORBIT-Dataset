@@ -182,10 +182,10 @@ The following checkpoints have been trained on the ORBIT train users using the a
 
 |   Model   | Frame size | Feature extractor |  Trained with LITE | Frame Accuracy (95% c.i) | Trained with clean/clutter (context/target) videos |
 |:---------:|:----------:|:-----------------:|:------------------:|:-------------------:|:------------------:|
-|   CNAPs        |     224    |  EfficientNet-B0  |         Y          | Coming soon |
-|           |     224    |  ViT-B-32-CLIP |         Y          | Coming soon|
-|   SimpleCNAPs  |     224    | EfficientNet-B0   |         Y          | Coming soon|
-|     |     224    | ViT-B-32-CLIP   |         Y          | Coming soon|
+|   CNAPs        |     224    |  EfficientNet-B0  |         Y          | 67.68 (0.58) | [`orbit_cluve_cnaps_efficientnet_b0_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_cnaps_efficientnet_b0_224_lite.pth)
+|           |     224    |  ViT-B-32-CLIP |         Y          | 72.33 (0.54) | [`orbit_cluve_cnaps_vit_b_32_clip_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_cnaps_vit_b_32_clip_224_lite.pth)
+|   SimpleCNAPs  |     224    | EfficientNet-B0   |         Y          | 66.83 (0.60) | [`orbit_cluve_simple_cnaps_efficientnet_b0_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_simple_cnaps_efficientnet_b0_224_lite.pth)
+|     |     224    | ViT-B-32-CLIP   |         Y          | 68.86 (0.56) | [`orbit_cluve_simple_cnaps_vit_b_32_clip_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_simple_cnaps_vit_b_32_clip_224_lite.pth)
 | ProtoNets |     224    |  EfficientNet-B0  |         Y          | 67.91 (0.56) |[`orbit_cluve_protonets_efficientnet_b0_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_efficientnet_b0_224_lite.pth)
 |  |     224    |  EfficientNet-V2-S  |         Y          | 72.76 (0.53) |[`orbit_cluve_protonets_efficientnet_v2_s_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_efficientnet_v2_s_224_lite.pth)
 |  |     224    |  ViT-B-32  |         Y          | 73.53 (0.51) |[`orbit_cluve_protonets_vit_b_32_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_vit_b_32_224_lite.pth)
