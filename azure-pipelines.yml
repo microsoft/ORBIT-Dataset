@@ -20,6 +20,7 @@ steps:
   env: 
     SYSTEM_ACCESSTOKEN: $(System.AccessToken)
   inputs:
+    toolVersion: 'LatestPreRelease'
     sourceCodeDirectory: '$(Build.SourcesDirectory)'
     language: 'python'
     querySuite: 'Recommended'
