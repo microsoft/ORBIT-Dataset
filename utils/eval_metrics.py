@@ -6,6 +6,7 @@ import json
 import torch
 import numpy as np
 from pathlib import Path
+from thop import clever_format
 
 class Evaluator():
     def __init__(self, stats_to_compute):
@@ -95,15 +96,17 @@ class TrainEvaluator(Evaluator):
         return mean_stats
 
 class TestEvaluator(Evaluator):
-    def __init__(self, stats_to_compute, save_dir = None):
+    def __init__(self, stats_to_compute, save_dir = None, ops_counter = None):
         super().__init__(stats_to_compute)
         self.reset()
         if save_dir:
             self.save_dir = save_dir
+        self.ops_counter = ops_counter
 
     def save(self):
         output = {}
         num_users = self.current_user+1
+        all_macs_dict = self.ops_counter.get_all_macs()
         assert len(self.all_users) == num_users
         for user in range(num_users): # loop through users
             user_id = self.all_users[user]
@@ -123,6 +126,9 @@ class TestEvaluator(Evaluator):
                 num_videos = len(task_frame_paths)
                 
                 task_output = {'task_object_list': task_object_list, 'task_videos': {}}
+                if self.ops_counter:
+                    macs_lookup_index = self.ops_counter_index[user][task]
+                    task_output['task_macs_to_personalise'] = clever_format(all_macs_dict[macs_lookup_index])
                 for v in range(num_videos): # loop through videos per task
                     video_frame_paths = task_frame_paths[v]
                     video_frame_probs = task_frame_probs[v].tolist()
@@ -230,6 +236,7 @@ class TestEvaluator(Evaluator):
     def reset(self):
         self.current_user = 0
         self.current_task = 0
+        self.current_task_total = 0
         self.all_frame_probs = [[[]]]
         self.all_video_labels = [[[]]]
         self.all_frame_paths = [[[]]]
@@ -237,6 +244,7 @@ class TestEvaluator(Evaluator):
         self.all_users = []
         self.all_object_lists = [[[]]]
         self.all_context_frame_paths = [[[]]]
+        self.ops_counter_index = [[0]]
 
     def append_context(self, context_logits, context_labels, context_clip_paths):
         context_frame_labels = context_labels.clone().cpu().numpy()
@@ -266,6 +274,9 @@ class TestEvaluator(Evaluator):
         self.all_context_frame_paths.append([[]])
         self.current_task = 0
         self.current_user += 1
+        self.ops_counter_index.append([])
+        self.ops_counter_index[-1].append(self.current_task_total + 1)
+        self.current_task_total += 1
 
     def next_task(self):
         self.all_frame_probs[self.current_user].append([])
@@ -274,7 +285,9 @@ class TestEvaluator(Evaluator):
         self.all_frame_predictions[self.current_user].append([])
         self.all_object_lists[self.current_user].append([])
         self.all_context_frame_paths[self.current_user].append([])
-        self.current_task +=1
+        self.ops_counter_index[-1].append(self.current_task_total + 1)
+        self.current_task += 1
+        self.current_task_total += 1
 
 class ValidationEvaluator(TestEvaluator):
     def __init__(self, stats_to_compute):

@@ -133,7 +133,7 @@ class Learner:
 
         self.train_evaluator = TrainEvaluator(self.train_metrics)
         self.validation_evaluator = ValidationEvaluator(self.evaluation_metrics)
-        self.test_evaluator = TestEvaluator(self.evaluation_metrics, self.checkpoint_dir)
+        self.test_evaluator = TestEvaluator(self.evaluation_metrics, self.checkpoint_dir, self.ops_counter)
     
     def run(self):
         if self.args.mode == 'train' or self.args.mode == 'train_test':

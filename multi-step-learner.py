@@ -125,7 +125,7 @@ class Learner:
     def init_evaluators(self):
         self.evaluation_metrics = ['frame_acc']
 
-        self.test_evaluator = TestEvaluator(self.evaluation_metrics, self.checkpoint_dir)
+        self.test_evaluator = TestEvaluator(self.evaluation_metrics, self.checkpoint_dir, self.ops_counter)
     
     def run(self):
         self.test(self.args.model_path)
