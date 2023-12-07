@@ -71,7 +71,7 @@ class OpsCounter():
         self.task_params_counter = 0
 
     def get_macs(self):
-        return clever_format([self.macs[-1]], "%.2f")
+        return [self.macs[-1]]
 
     def convert_to_minutes(self, seconds):
         mins, secs = divmod(seconds, 60)

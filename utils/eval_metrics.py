@@ -131,7 +131,7 @@ class TestEvaluator(Evaluator):
                 task_output = {'task_object_list': task_object_list, 'task_videos': {}}
                 if self.ops_counter:
                     macs_lookup_index = self.ops_counter_index[user][task]
-                    task_output['task_macs_to_personalise'] = clever_format(all_macs_dict[macs_lookup_index])
+                    task_output['task_macs_to_personalise'] = int(all_macs_dict[macs_lookup_index])
                 for v in range(num_videos): # loop through videos per task
                     video_frame_paths = task_frame_paths[v]
                     video_frame_probs = task_frame_probs[v].tolist()
