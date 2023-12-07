@@ -106,7 +106,10 @@ class TestEvaluator(Evaluator):
     def save(self):
         output = {}
         num_users = self.current_user+1
-        all_macs_dict = self.ops_counter.get_all_macs()
+
+        if self.ops_counter:
+            all_macs_dict = self.ops_counter.get_all_macs()
+            
         assert len(self.all_users) == num_users
         for user in range(num_users): # loop through users
             user_id = self.all_users[user]
