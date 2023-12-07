@@ -73,9 +73,6 @@ class OpsCounter():
     def get_macs(self):
         return clever_format([self.macs[-1]], "%.2f")
 
-    def get_all_macs(self):
-        return self.macs
-
     def convert_to_minutes(self, seconds):
         mins, secs = divmod(seconds, 60)
         mins = round(mins)

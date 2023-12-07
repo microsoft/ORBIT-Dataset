@@ -108,8 +108,8 @@ class TestEvaluator(Evaluator):
         num_users = self.current_user+1
 
         if self.ops_counter:
-            all_macs_dict = self.ops_counter.get_all_macs()
-            
+            all_macs_dict = self.ops_counter.macs
+
         assert len(self.all_users) == num_users
         for user in range(num_users): # loop through users
             user_id = self.all_users[user]
