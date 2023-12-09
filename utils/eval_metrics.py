@@ -8,6 +8,8 @@ import numpy as np
 from pathlib import Path
 from thop import clever_format
 
+from utils.ops_counter import OpsCounter
+
 class Evaluator():
     def __init__(self, stats_to_compute):
 
@@ -96,12 +98,15 @@ class TrainEvaluator(Evaluator):
         return mean_stats
 
 class TestEvaluator(Evaluator):
-    def __init__(self, stats_to_compute, save_dir = None, ops_counter = None):
+    def __init__(self, stats_to_compute, save_dir = None, with_ops_counter = False, count_backwards = False):
         super().__init__(stats_to_compute)
         self.reset()
         if save_dir:
             self.save_dir = save_dir
-        self.ops_counter = ops_counter
+        if with_ops_counter:
+            self.ops_counter = OpsCounter(count_backward=count_backwards)
+        else:
+            self.ops_counter = None
 
     def save(self):
         output = {}
@@ -269,6 +274,7 @@ class TestEvaluator(Evaluator):
         self.all_context_frame_paths[self.current_user][self.current_task] = task_context_frames
 
     def next_user(self):
+        self._task_complete()
         self.all_frame_probs.append([[]])
         self.all_video_labels.append([[]])
         self.all_frame_paths.append([[]])
@@ -282,6 +288,7 @@ class TestEvaluator(Evaluator):
         self.current_task_total += 1
 
     def next_task(self):
+        self._task_complete()
         self.all_frame_probs[self.current_user].append([])
         self.all_video_labels[self.current_user].append([])
         self.all_frame_paths[self.current_user].append([])
@@ -291,6 +298,23 @@ class TestEvaluator(Evaluator):
         self.ops_counter_index[-1].append(self.current_task_total + 1)
         self.current_task += 1
         self.current_task_total += 1
+
+    def set_base_params(self, params):
+        if self.ops_counter:
+            self.ops_counter.set_base_params(params)
+
+    def log_time(self, t, time_type = 'Personalise'):
+        if self.ops_counter:
+            self.ops_counter.log_time(t, time_type=time_type)
+
+    def get_ops_counter_mean_stats(self):
+        if self.ops_counter:
+            return self.ops_counter.get_mean_stats()
+        raise Exception("Invalid call to get_ops_counter_mean_stats: Only possible if with_ops_counter is set to True in the constructor.")
+
+    def _task_complete(self):
+        if self.ops_counter:
+            self.ops_counter.task_complete()
 
 class ValidationEvaluator(TestEvaluator):
     def __init__(self, stats_to_compute):
