@@ -184,6 +184,9 @@ class Learner:
                 num_context_clips_per_task.append(num_context_clips)
                 num_target_clips_per_task.append(num_target_clips)
 
+                # complete the task (required for correct ops counter numbers)
+                self.test_evaluator.task_complete()
+
                 # if this is the user's last task, get the average performance for the user over all their tasks
                 if (step+1) % self.args.num_test_tasks == 0:
                     self.test_evaluator.set_current_user(task_dict["task_id"])

@@ -71,7 +71,10 @@ class OpsCounter():
         self.task_params_counter = 0
 
     def get_macs(self):
-        return [self.macs[-1]]
+        return self.macs[-1]
+
+    def get_params(self):
+        return self.params[-1]
 
     def convert_to_minutes(self, seconds):
         mins, secs = divmod(seconds, 60)

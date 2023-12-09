@@ -100,20 +100,17 @@ class TrainEvaluator(Evaluator):
 class TestEvaluator(Evaluator):
     def __init__(self, stats_to_compute, save_dir = None, with_ops_counter = False, count_backwards = False):
         super().__init__(stats_to_compute)
-        self.reset()
         if save_dir:
             self.save_dir = save_dir
         if with_ops_counter:
             self.ops_counter = OpsCounter(count_backward=count_backwards)
         else:
             self.ops_counter = None
+        self.reset()
 
     def save(self):
         output = {}
         num_users = self.current_user+1
-
-        if self.ops_counter:
-            all_macs_dict = self.ops_counter.macs
 
         assert len(self.all_users) == num_users
         for user in range(num_users): # loop through users
@@ -135,8 +132,7 @@ class TestEvaluator(Evaluator):
                 
                 task_output = {'task_object_list': task_object_list, 'task_videos': {}}
                 if self.ops_counter:
-                    macs_lookup_index = self.ops_counter_index[user][task]
-                    task_output['task_macs_to_personalise'] = int(all_macs_dict[macs_lookup_index])
+                    task_output['task_macs_to_personalise'] = int(self.macs_counter[user][task])
                 for v in range(num_videos): # loop through videos per task
                     video_frame_paths = task_frame_paths[v]
                     video_frame_probs = task_frame_probs[v].tolist()
@@ -252,7 +248,9 @@ class TestEvaluator(Evaluator):
         self.all_users = []
         self.all_object_lists = [[[]]]
         self.all_context_frame_paths = [[[]]]
-        self.ops_counter_index = [[0]]
+        if self.ops_counter:
+            self.macs_counter = [[]]
+            self.params_counter = [[]]
 
     def append_context(self, context_logits, context_labels, context_clip_paths):
         context_frame_labels = context_labels.clone().cpu().numpy()
@@ -274,28 +272,26 @@ class TestEvaluator(Evaluator):
         self.all_context_frame_paths[self.current_user][self.current_task] = task_context_frames
 
     def next_user(self):
-        self._task_complete()
         self.all_frame_probs.append([[]])
         self.all_video_labels.append([[]])
         self.all_frame_paths.append([[]])
         self.all_frame_predictions.append([[]])
         self.all_object_lists.append([[]])
         self.all_context_frame_paths.append([[]])
+        if self.ops_counter:
+            self.macs_counter.append([])
+            self.params_counter.append([])
         self.current_task = 0
         self.current_user += 1
-        self.ops_counter_index.append([])
-        self.ops_counter_index[-1].append(self.current_task_total + 1)
         self.current_task_total += 1
 
     def next_task(self):
-        self._task_complete()
         self.all_frame_probs[self.current_user].append([])
         self.all_video_labels[self.current_user].append([])
         self.all_frame_paths[self.current_user].append([])
         self.all_frame_predictions[self.current_user].append([])
         self.all_object_lists[self.current_user].append([])
         self.all_context_frame_paths[self.current_user].append([])
-        self.ops_counter_index[-1].append(self.current_task_total + 1)
         self.current_task += 1
         self.current_task_total += 1
 
@@ -312,9 +308,11 @@ class TestEvaluator(Evaluator):
             return self.ops_counter.get_mean_stats()
         raise Exception("Invalid call to get_ops_counter_mean_stats: Only possible if with_ops_counter is set to True in the constructor.")
 
-    def _task_complete(self):
+    def task_complete(self):
         if self.ops_counter:
             self.ops_counter.task_complete()
+            self.macs_counter[self.current_user].append(self.ops_counter.get_macs())
+            self.params_counter[self.current_user].append(self.ops_counter.get_params())
 
 class ValidationEvaluator(TestEvaluator):
     def __init__(self, stats_to_compute):
