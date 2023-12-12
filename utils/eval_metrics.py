@@ -296,7 +296,7 @@ class TestEvaluator(Evaluator):
         if self.ops_counter:
             self.ops_counter.set_base_params(params)
 
-    def log_time(self, t, time_type = 'Personalise'):
+    def log_time(self, t, time_type = 'personalise'):
         if self.ops_counter:
             self.ops_counter.log_time(t, time_type=time_type)
 
