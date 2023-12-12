@@ -302,14 +302,14 @@ class TestEvaluator(Evaluator):
 
     def get_ops_counter_mean_stats(self):
         if self.ops_counter:
-            return self.ops_counter.get_mean_stats()
+            return self.ops_counter.get_mean_stats(self.macs_counter, self.params_counter)
         raise Exception("Invalid call to get_ops_counter_mean_stats: Only possible if with_ops_counter is set to True in the constructor.")
 
     def task_complete(self):
         if self.ops_counter:
-            self.ops_counter.task_complete()
             self.macs_counter[self.current_user].append(self.ops_counter.get_macs())
             self.params_counter[self.current_user].append(self.ops_counter.get_params())
+            self.ops_counter.task_complete()
 
 class ValidationEvaluator(TestEvaluator):
     def __init__(self, stats_to_compute):

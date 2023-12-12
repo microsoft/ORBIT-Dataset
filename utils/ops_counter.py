@@ -8,7 +8,6 @@ class OpsCounter():
         self.verbose = False
         self.multiplier=2 if count_backward else 1 # counts foward + backward pass MACs 
         self.task_mac_counter, self.task_params_counter = 0, 0
-        self.macs, self.params = [], []
         self.personalise_time_per_task = []
         self.inference_time_per_frame = []
 
@@ -63,18 +62,17 @@ class OpsCounter():
         custom_ops = module.thop_custom_ops if hasattr(module, 'thop_custom_ops') else {}
         macs, params = profile(module, inputs=inputs, custom_ops=custom_ops, verbose=self.verbose)
         self.add_macs(macs * self.multiplier)
+        self.add_params(params)
 
     def task_complete(self):
-        self.macs.append(self.task_mac_counter)
-        self.params.append(self.base_params_counter + self.task_params_counter)
         self.task_mac_counter = 0
         self.task_params_counter = 0
 
     def get_macs(self):
-        return self.macs[-1]
+        return self.task_mac_counter
 
     def get_params(self):
-        return self.params[-1]
+        return self.base_params_counter + self.task_params_counter
 
     def convert_to_minutes(self, seconds):
         mins, secs = divmod(seconds, 60)
@@ -88,10 +86,10 @@ class OpsCounter():
     def convert_to_microseconds(self, seconds):
         return f"{round(seconds * 1000000):d}\u03bcs"
 
-    def get_mean_stats(self):
-        mean_ops = np.mean(self.macs)
-        std_ops = np.std(self.macs)
-        mean_params = np.mean(self.params)
+    def get_mean_stats(self, macs, params):
+        mean_ops = np.mean(macs)
+        std_ops = np.std(macs)
+        mean_params = np.mean(params)
         mean_ops, std_ops, mean_params = clever_format([mean_ops, std_ops, mean_params], "%.2f")
         mean_personalise_time = self.convert_to_minutes(np.mean(self.personalise_time_per_task))
         std_personalise_time = self.convert_to_minutes(np.std(self.personalise_time_per_task))
