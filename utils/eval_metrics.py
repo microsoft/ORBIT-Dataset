@@ -240,7 +240,6 @@ class TestEvaluator(Evaluator):
     def reset(self):
         self.current_user = 0
         self.current_task = 0
-        self.current_task_total = 0
         self.all_frame_probs = [[[]]]
         self.all_video_labels = [[[]]]
         self.all_frame_paths = [[[]]]
@@ -283,7 +282,6 @@ class TestEvaluator(Evaluator):
             self.params_counter.append([])
         self.current_task = 0
         self.current_user += 1
-        self.current_task_total += 1
 
     def next_task(self):
         self.all_frame_probs[self.current_user].append([])
@@ -293,7 +291,6 @@ class TestEvaluator(Evaluator):
         self.all_object_lists[self.current_user].append([])
         self.all_context_frame_paths[self.current_user].append([])
         self.current_task += 1
-        self.current_task_total += 1
 
     def set_base_params(self, params):
         if self.ops_counter:
