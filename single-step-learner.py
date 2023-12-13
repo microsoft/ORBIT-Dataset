@@ -39,7 +39,6 @@ from data.dataloaders import DataLoader
 from data.utils import get_batch_indices, unpack_task, attach_frame_history
 from model.few_shot_recognisers import SingleStepFewShotRecogniser
 from utils.args import parse_args
-from utils.ops_counter import OpsCounter
 from utils.optim import cross_entropy, init_optimizer, init_scheduler, get_curr_learning_rates
 from utils.logging import print_and_log, get_log_files, stats_to_str
 from utils.eval_metrics import TrainEvaluator, ValidationEvaluator, TestEvaluator
@@ -72,7 +71,6 @@ class Learner:
             torch.cuda.manual_seed_all(self.args.seed)
         
         self.device = torch.device(device_id)
-        self.ops_counter = OpsCounter()
         self.init_dataset() 
         self.init_model()
         self.init_evaluators()
@@ -133,7 +131,7 @@ class Learner:
 
         self.train_evaluator = TrainEvaluator(self.train_metrics)
         self.validation_evaluator = ValidationEvaluator(self.evaluation_metrics)
-        self.test_evaluator = TestEvaluator(self.evaluation_metrics, self.checkpoint_dir)
+        self.test_evaluator = TestEvaluator(self.evaluation_metrics, self.checkpoint_dir, with_ops_counter=True)
     
     def run(self):
         if self.args.mode == 'train' or self.args.mode == 'train_test':
@@ -306,7 +304,7 @@ class Learner:
             print_and_log(self.logfile, 'warning: saved model path could not be found; using pretrained initialisation.')
             path = self.checkpoint_dir
         self.model.set_test_mode(True)
-        self.ops_counter.set_base_params(self.model)
+        self.test_evaluator.set_base_params(self.model)
         num_context_clips_per_task, num_target_clips_per_task = [], []
 
         with torch.no_grad():
@@ -319,8 +317,8 @@ class Learner:
                 self.test_evaluator.set_task_context_paths(context_paths)
 
                 t1 = time.time()
-                self.model.personalise(context_clips, context_labels, ops_counter=self.ops_counter)
-                self.ops_counter.log_time(time.time() - t1, 'personalise')
+                self.model.personalise(context_clips, context_labels, ops_counter=self.test_evaluator.ops_counter)
+                self.test_evaluator.log_time(time.time() - t1, 'personalise')
 
                 # loop through target videos for the current task
                 num_target_clips = 0
@@ -330,17 +328,18 @@ class Learner:
                     num_clips = len(video_clips)
                     t1 = time.time()
                     video_logits = self.model.predict(video_clips)
-                    self.ops_counter.log_time((time.time() - t1)/float(num_clips), 'inference')
+                    self.test_evaluator.log_time((time.time() - t1)/float(num_clips), 'inference')
                     self.test_evaluator.append_video(video_logits, video_label, video_paths)
                     num_target_clips += num_clips
 
                 # reset task's params
                 self.model._reset()
-                # add task's ops to self.ops_counter
-                self.ops_counter.task_complete()
                 # log number of clips per task
                 num_context_clips_per_task.append(num_context_clips)
                 num_target_clips_per_task.append(num_target_clips)
+
+                # complete the task (required for correct ops counter numbers)
+                self.test_evaluator.task_complete()
 
                 # if this is the user's last task, get the average performance for the user over all their tasks
                 if (step+1) % self.args.num_test_tasks == 0:
@@ -355,7 +354,7 @@ class Learner:
             
             stats_per_user, stats_per_obj, stats_per_task, stats_per_video = self.test_evaluator.get_mean_stats()
             stats_per_user_str, stats_per_obj_str, stats_per_task_str, stats_per_video_str = stats_to_str(stats_per_user), stats_to_str(stats_per_obj), stats_to_str(stats_per_task), stats_to_str(stats_per_video)
-            mean_ops_stats = self.ops_counter.get_mean_stats()
+            mean_ops_stats = self.test_evaluator.get_ops_counter_mean_stats()
             print_and_log(self.logfile, f'{self.args.test_set} [{path}]\n per-user stats: {stats_per_user_str}\n per-object stats: {stats_per_obj_str}\n per-task stats: {stats_per_task_str}\n per-video stats: {stats_per_video_str}\n model stats: {mean_ops_stats}\n')
             if save_evaluator:
                 self.test_evaluator.save()
