@@ -218,7 +218,18 @@ class TestEvaluator(Evaluator):
             mean_stats[stat] = [ np.mean(user_means), self.get_confidence_interval(user_means) ]
 
         return mean_stats
+    
+    def get_last_user_average_macs(self):
+        if self.ops_counter and len(self.macs_counter) > 0:
+            return np.mean(self.macs_counter[-1])
+        return 0.0
 
+    def get_macs_stats(self):
+        mean_ops = np.mean(self.macs_counter)
+        std_ops = np.std(self.macs_counter)
+        mean_ops, std_ops = clever_format([mean_ops, std_ops], "%.2f")
+        return mean_ops, std_ops
+    
     def append_video(self, frame_logits, video_label, frame_paths):
 
         # remove any duplicate frames added due to padding to a multiple of clip_length
