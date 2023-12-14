@@ -52,7 +52,7 @@ The following script summarizes the dataset statistics:
 python3 scripts/summarize_dataset.py --data_path path/to/save/dataset/orbit_benchmark_<FRAME_SIZE> 
 # to aggregate stats across train, validation, and test collectors, add --combine_modes
 ```
-These should match the values in Table 2 (`combine_modes=True`) and Table A.2 (`combine_modes=False`) in the dataset paper. The Jupyter notebook `scripts/plot_dataset.ipynb` can be used to plot bar charts summarizing the dataset (uses Plotly). These should match Figure 2 (`combine_modes=True`) and Figure A.3/A.4 (`combine_modes=False`) in the dataset paper.
+These should match the values in Table 2 (`combine_modes=True`) and Table A.2 (`combine_modes=False`) in the dataset paper.
 
 # Training & testing models on ORBIT
 
@@ -245,7 +245,7 @@ bash scripts/download_unfiltered_dataset.sh folder/to/save/dataset
 ```
 Alternatively, the train/validation/test/other ZIPs can be manually downloaded [here](https://city.figshare.com/articles/dataset/_/14294597). Use `scripts/merge_and_split_benchmark_users.py` to merge the other folder (see script for usage details).
 
-To summarize and plot the unfiltered dataset, use `scripts/summarize_dataset.py` (with `--no_modes` rather than `--combine_modes`) and `scripts/plot_dataset.ipynb` (with `no_modes=True`) similar to above.
+To summarize and plot the unfiltered dataset, use `scripts/summarize_dataset.py` (with `--no_modes` rather than `--combine_modes`) similar to above.
 
 # Citations
 
