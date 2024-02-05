@@ -1,7 +1,7 @@
 # ORBIT: A Real-World Few-Shot Dataset for Teachable Object Recognition
 
 This repository contains code for the following two papers:
-- [ORBIT: A Real-World Few-Shot Dataset for Teachable Object Recognition](https://arxiv.org/abs/2104.03841). Code is provided to download and prepare the ORBIT benchmark dataset, and train/test 4 few-shot learning models on this dataset (at 84x84 frames). 
+- [ORBIT: A Real-World Few-Shot Dataset for Teachable Object Recognition](https://arxiv.org/abs/2104.03841). Code is provided to download and prepare the ORBIT benchmark dataset, and train/test 4 few-shot learning models on this dataset (at 84x84 frames).
 - [Memory Efficient Meta-Learning with Large Images](https://arxiv.org/abs/2107.01105). Code is provided for Large Image and Task Episodic (LITE) training, enabling the models to be trained on large (224x224) frames on a single GPU.
 
 The code is authored by Daniela Massiceti and built using PyTorch 1.13.1, TorchVision 0.14.1, and Python 3.7.
@@ -12,7 +12,7 @@ The code is authored by Daniela Massiceti and built using PyTorch 1.13.1, TorchV
     <td><img src="docs/hairbrush.PNG" alt="clean frame of hairbrush" width = 140px></td>
     <td><img src="docs/keys.PNG" alt="clean frame of keys" width = 140px></td>
     <td><img src="docs/watering can.PNG" alt="clean frame of a watering can" width = 140px></td>
-   </tr> 
+   </tr>
    <tr>
       <td><img src="docs/facemask_clutter.PNG" alt="clutter frame of facemask" width = 140px></td>
       <td><img src="docs/hairbrush_clutter.PNG" alt="clutter frame of hairbrush" width = 140px></td>
@@ -46,10 +46,10 @@ bash scripts/download_benchmark_dataset.sh folder/to/save/dataset FRAME_SIZE
 ```
 
 Alternatively, the 224x224 train/validation/test ZIPs can be manually downloaded [here](https://city.figshare.com/articles/dataset/_/14294597). Each should be unzipped as a separate train/validation/test folder into `folder/to/save/dataset/orbit_benchmark_224`. The full-size (1080x1080) ZIPs can also be manually downloaded and `scripts/resize_videos.py` can be used to re-size the frames if needed.
-   
+
 The following script summarizes the dataset statistics:
 ```
-python3 scripts/summarize_dataset.py --data_path path/to/save/dataset/orbit_benchmark_<FRAME_SIZE> 
+python3 scripts/summarize_dataset.py --data_path path/to/save/dataset/orbit_benchmark_<FRAME_SIZE>
 # to aggregate stats across train, validation, and test collectors, add --combine_modes
 ```
 These should match the values in Table 2 (`combine_modes=True`) and Table A.2 (`combine_modes=False`) in the dataset paper.
@@ -66,7 +66,7 @@ The training protocol is flexible and can leverage any training regime (e.g. epi
 * All data belonging to the ORBIT train users. This includes their clean and clutter videos, the videos' object labels, and any extra frame annotations (e.g. bounding boxes and quality issues).
 * Any other dataset, including for pre-training the feature extractor.
 
-**What data cannot be used**: 
+**What data cannot be used**:
 * All data belonging to the ORBIT validation and test users (including videos, video labels and frame annotations).
 
 
@@ -74,9 +74,9 @@ The training protocol is flexible and can leverage any training regime (e.g. epi
 
 We have updated the evaluation protocol for the ORBIT benchmark (compared to the original [dataset paper](https://arxiv.org/pdf/2104.03841.pdf])) following the [ORBIT Few-Shot Object Recognition Challenge 2022](https://eval.ai/web/challenges/challenge-page/1438/overview):
 
-* We have increased the number of tasks that should be sampled per test user from 5 to 50. As before, the 'way' for each task should include **all** the user's objects. The (meta-trained) model must be personalized to these objects using only the task's support set (sampled from the user's labelled clean videos), and then evaluated on the task's query set (sampled from the user's clutter videos) videos. This corresponds to the 'Clutter Video Evaluation (CLU-VE)' setting in the original dataset paper. 
+* We have increased the number of tasks that should be sampled per test user from 5 to 50. As before, the 'way' for each task should include **all** the user's objects. The (meta-trained) model must be personalized to these objects using only the task's support set (sampled from the user's labelled clean videos), and then evaluated on the task's query set (sampled from the user's clutter videos) videos. This corresponds to the 'Clutter Video Evaluation (CLU-VE)' setting in the original dataset paper.
 * We have reduced the number of frames that should be sampled in a task's query set: rather than **all** the frames from **all** the user's clutter videos, the query set should contain 200 randomly sampled frames per video for **all** the user's clutter videos.
-  * For each clutter video, the personalized model should predict the object in each of its 200 randomly sampled frames, and the **frame accuracy** metric should be computed (i.e. over the 200 frames). 
+  * For each clutter video, the personalized model should predict the object in each of its 200 randomly sampled frames, and the **frame accuracy** metric should be computed (i.e. over the 200 frames).
   * Note, before sampling the 200 frames, the video should be filtered to exclude all frames that do not contain the ground-truth object (i.e. `object_not_present_issue=True`; see [Filtering by annotations](https://github.com/microsoft/ORBIT-Dataset#filtering-by-annotations) section). If after filtering, a clutter video has less than 50 valid frames, the video should be excluded from the evaluation. If it has 50-200 valid frames then all these frames should be included.
   * The above should be repeated for each clutter video in the task's query set, resulting in N frame accurary scores where N is the number of clutter videos belonging to the user. Note, since predictions are not made for all frames in a clutter video, we no longer ask the frames-to-recognition and video accuracy metrics to be reported.
   * The above should be repeated for each of the 50 tasks sampled for each of the 17 ORBIT test users, with the frame accuracy for each 200-frame sample per clutter video flattened into one list. The average frame accuracy and 95% confidence interval should be reported over all 200-frame samples.
@@ -84,8 +84,8 @@ We have updated the evaluation protocol for the ORBIT benchmark (compared to the
 ### **Personalize rules**
 For each test user's task, a model must be personalized to **all** the user's objects using only the support (clean) videos and associated labels for those objects. Note, any method of personalization can be used (e.g. fine-tuning, parameter generation, metric learning).
 
-**What data can be used to personalize**: 
-* The user's clean videos and video labels for all their objects. Frames can be sampled from these videos in any way and pre-processed/augmented freely. We empirically found that uniformly sampling frames from the clean videos when personalizing yields better performance than other sampling methods, hence all our baselines use this sampling method. 
+**What data can be used to personalize**:
+* The user's clean videos and video labels for all their objects. Frames can be sampled from these videos in any way and pre-processed/augmented freely. We empirically found that uniformly sampling frames from the clean videos when personalizing yields better performance than other sampling methods, hence all our baselines use this sampling method.
 
 **What data cannot be used to personalize**:
 * Extra annotations for the user's clean videos (e.g. bounding boxes, quality issues).
@@ -96,10 +96,10 @@ For each test user's task, a model must be personalized to **all** the user's ob
 ### **Recognize rules**
 Once a model has been personalized to a test user's task, the model should be evaluated on the task's query set which should contain **all** that user's clutter videos. Predictions should be made for 200 randomly sampled frames per clutter video, ensuring that no sampled frames have `object_not_present_issue=True`. For each frame, the personalized model should predict which _one_ object is present from **all** the user's objects. The frame accuracy metric should be calculated over the 200 randomly sampled frames for each clutter video in the task's query set.
 
-Note, before sampling the 200 frames, the video should be filtered to exclude all frames that do not contain the ground-truth object (i.e. `object_not_present_issue=True`; see [Filtering by annotations](https://github.com/microsoft/ORBIT-Dataset#filtering-by-annotations) section). If after filtering, a clutter video has less than 50 valid frames, the video should be excluded from the evaluation. If it has 50-200 valid frames then all these frames should be included. 
+Note, before sampling the 200 frames, the video should be filtered to exclude all frames that do not contain the ground-truth object (i.e. `object_not_present_issue=True`; see [Filtering by annotations](https://github.com/microsoft/ORBIT-Dataset#filtering-by-annotations) section). If after filtering, a clutter video has less than 50 valid frames, the video should be excluded from the evaluation. If it has 50-200 valid frames then all these frames should be included.
 
 **What data can be used to make a frame prediction**:
-* The current frame and any frames before it in the clutter video. 
+* The current frame and any frames before it in the clutter video.
 
 **What data cannot be used to make a frame prediction**:
 * Frames _after_ the current frame in the clutter video.
@@ -110,7 +110,7 @@ Note, before sampling the 200 frames, the video should be filtered to exclude al
 
 The following scripts can be used to train and test several baselines on the ORBIT benchmark. We provide support for 224x224 frames and the following feature extractors: `efficientnet_b0` (pre-trained on ImageNet-1K), `efficientnet_v2_s`, `vit_s_32`, and `vit_b_32` (all pre-trained on ImagetNet-21K), and `vit_b_32_clip` (pre-trained on Laion2B).
 
-All other arguments are described in `utils/args.py`. Note that the Clutter Video Evaluation (CLU-VE) setting is run by specifying `--context_video_type clean --target_video_type clutter`. Experiments will be saved in `--checkpoint_dir`. All other implementation details are described in Section 5 and Appendix F of the [dataset paper](https://arxiv.org/abs/2104.03841). 
+All other arguments are described in `utils/args.py`. Note that the Clutter Video Evaluation (CLU-VE) setting is run by specifying `--context_video_type clean --target_video_type clutter`. Experiments will be saved in `--checkpoint_dir`. All other implementation details are described in Section 5 and Appendix F of the [dataset paper](https://arxiv.org/abs/2104.03841).
 
 Note, before training/testing remember to activate the conda environment (`conda activate orbit-dataset`) or virtual environment. If you are using Windows (or WSL) you may need to set `workers=0` in `data/queues.py` as multi-threaded data loading is not supported. You will also need to [enable longer file paths](https://docs.microsoft.com/en-us/windows/win32/fileio/maximum-file-path-limitation#enable-long-paths-in-windows-10-version-1607-and-later) as some file names in the dataset are longer than the system limit.
 
@@ -145,7 +145,7 @@ python3 single-step-learner.py --data_path folder/to/save/dataset/orbit_benchmar
 ```
 
 **FineTuner.**
-Given the recent strong performance of finetuning-based few-shot learners, we also provide a finetuning baseline. Here, we simply freeze a pre-trained feature extractor and, using a task's support set, we finetune either i) a linear head, or i) a linear head _and_ FiLM layers ([Perez et al., 2017](https://arxiv.org/abs/1709.07871)) in the feature extractor (see [Table 1](https://arxiv.org/pdf/2107.01105.pdf)). In principle, you could also use a meta-trained checkpoint as an initialization through the `--model_path` argument. 
+Given the recent strong performance of finetuning-based few-shot learners, we also provide a finetuning baseline. Here, we simply freeze a pre-trained feature extractor and, using a task's support set, we finetune either i) a linear head, or i) a linear head _and_ FiLM layers ([Perez et al., 2017](https://arxiv.org/abs/1709.07871)) in the feature extractor (see [Table 1](https://arxiv.org/pdf/2107.01105.pdf)). In principle, you could also use a meta-trained checkpoint as an initialization through the `--model_path` argument.
 
 ```
 python3 multi-step-learner.py --data_path folder/to/save/dataset/orbit_benchmark_224 \
@@ -158,7 +158,7 @@ python3 multi-step-learner.py --data_path folder/to/save/dataset/orbit_benchmark
 ```
 Note, we have removed support for further training the feature extractor on the ORBIT train users using standard supervised learning with the objects' broader cluster labels. Please roll back to [this commit](https://github.com/microsoft/ORBIT-Dataset/commit/5a2b4e852d610528403f12a5130f676e5c6e48bc) if you would like to do this. The object clusters can be found in `data/orbit_{train,validation,test}_object_clusters_labels.json` and `data/object_clusters_benchmark.txt`.
 
-**MAML.** 
+**MAML.**
 Our implementation of [MAML](https://arxiv.org/abs/1703.03400) (Finn et al., _ICML 2017_) is no longer supported. Please roll back to [this commit](https://github.com/microsoft/ORBIT-Dataset/commit/5a2b4e852d610528403f12a5130f676e5c6e48bc) if you need to reproduce the MAML baselines in [Table 5](https://arxiv.org/pdf/2104.03841.pdf]) (dataset paper) or [Table 1](https://arxiv.org/pdf/2107.01105.pdf) (LITE paper).
 
 **84x84 images.**
@@ -168,8 +168,8 @@ Training/testing on 84x84 images is no longer supported. Please roll back to [th
 
 The GPU memory requirements can be reduced by:
 * Using a smaller feature extractor (e.g. `efficientnet_b0`).
-* Training with LITE (only relevant for Simple CNAPs/CNAPs/ProtoNets and typically only needed for 224x224 or larger images). This can be activated with the `--with_lite` flag. Memory can be further saved by lowering `--num_lite_samples`. 
-* Using a smaller `batch_size`. This is relevant for all baselines (trained with/without LITE). 
+* Training with LITE (only relevant for Simple CNAPs/CNAPs/ProtoNets and typically only needed for 224x224 or larger images). This can be activated with the `--with_lite` flag. Memory can be further saved by lowering `--num_lite_samples`.
+* Using a smaller `batch_size`. This is relevant for all baselines (trained with/without LITE).
 * Lowering the `--clip_length` argument.
 * Changing the `--train_context_clip_method`, `--train_target_clip_method`, or `--test_context_clip_method` arguments to `random`/`random_200`/`uniform` rather than `max`.
 
@@ -182,18 +182,18 @@ The following checkpoints have been trained on the ORBIT train users using the a
 
 |   Model   | Frame size | Feature extractor |  Trained with LITE | Frame Accuracy (95% c.i) | Trained with clean/clutter (context/target) videos |
 |:---------:|:----------:|:-----------------:|:------------------:|:-------------------:|:------------------:|
-|   CNAPs        |     224    |  EfficientNet-B0  |         Y          | 67.68 (0.58) | [`orbit_cluve_cnaps_efficientnet_b0_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_cnaps_efficientnet_b0_224_lite.pth)
-|           |     224    |  ViT-B-32-CLIP |         Y          | 72.33 (0.54) | [`orbit_cluve_cnaps_vit_b_32_clip_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_cnaps_vit_b_32_clip_224_lite.pth)
-|   SimpleCNAPs  |     224    | EfficientNet-B0   |         Y          | 66.83 (0.60) | [`orbit_cluve_simple_cnaps_efficientnet_b0_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_simple_cnaps_efficientnet_b0_224_lite.pth)
-|     |     224    | ViT-B-32-CLIP   |         Y          | 68.86 (0.56) | [`orbit_cluve_simple_cnaps_vit_b_32_clip_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_simple_cnaps_vit_b_32_clip_224_lite.pth)
-| ProtoNets |     224    |  EfficientNet-B0  |         Y          | 67.91 (0.56) |[`orbit_cluve_protonets_efficientnet_b0_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_efficientnet_b0_224_lite.pth)
-|  |     224    |  EfficientNet-V2-S  |         Y          | 72.76 (0.53) |[`orbit_cluve_protonets_efficientnet_v2_s_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_efficientnet_v2_s_224_lite.pth)
-|  |     224    |  ViT-B-32  |         Y          | 73.53 (0.51) |[`orbit_cluve_protonets_vit_b_32_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_vit_b_32_224_lite.pth)
-|  |     224    |  ViT-B-32-CLIP  |         Y          |  73.95 (0.52) |[`orbit_cluve_protonets_vit_b_32_clip_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_vit_b_32_clip_224_lite.pth)
-| ProtoNets (cosine) |     224    |  EfficientNet-B0  |         Y          | 67.48 (0.57) |[`orbit_cluve_protonets_cosine_efficientnet_b0_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_cosine_efficientnet_b0_224_lite.pth)
-|           |     224    |  EfficientNet-V2-S  |         Y          | 73.10 (0.54) |[`orbit_cluve_protonets_cosine_efficientnet_v2_s_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_cosine_efficientnet_v2_s_224_lite.pth)
-|           |     224    |  ViT-B-32  |         Y          | 75.38 (0.51) |[`orbit_cluve_protonets_cosine_vit_b_32_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_cosine_vit_b_32_224_lite.pth)
-|           |     224    |  ViT-B-32-CLIP  |         Y          | 73.54 (0.52) |[`orbit_cluve_protonets_cosine_vit_b_32_clip_224_lite.pth`](https://taixmachinelearning.blob.core.windows.net/publicbaselines/orbit_cluve_protonets_cosine_vit_b_32_clip_224_lite.pth)
+|   CNAPs        |     224    |  EfficientNet-B0  |         Y          | 67.68 (0.58) | [`orbit_cluve_cnaps_efficientnet_b0_224_lite.pth`](https://taixmachinelearning.z5.web.core.windows.net/orbit_cluve_cnaps_efficientnet_b0_224_lite.pth)
+|           |     224    |  ViT-B-32-CLIP |         Y          | 72.33 (0.54) | [`orbit_cluve_cnaps_vit_b_32_clip_224_lite.pth`](https://taixmachinelearning.z5.web.core.windows.net/orbit_cluve_cnaps_vit_b_32_clip_224_lite.pth)
+|   SimpleCNAPs  |     224    | EfficientNet-B0   |         Y          | 66.83 (0.60) | [`orbit_cluve_simple_cnaps_efficientnet_b0_224_lite.pth`](https://taixmachinelearning.z5.web.core.windows.net/orbit_cluve_simple_cnaps_efficientnet_b0_224_lite.pth)
+|     |     224    | ViT-B-32-CLIP   |         Y          | 68.86 (0.56) | [`orbit_cluve_simple_cnaps_vit_b_32_clip_224_lite.pth`](https://taixmachinelearning.z5.web.core.windows.net/orbit_cluve_simple_cnaps_vit_b_32_clip_224_lite.pth)
+| ProtoNets |     224    |  EfficientNet-B0  |         Y          | 67.91 (0.56) |[`orbit_cluve_protonets_efficientnet_b0_224_lite.pth`](https://taixmachinelearning.z5.web.core.windows.net/orbit_cluve_protonets_efficientnet_b0_224_lite.pth)
+|  |     224    |  EfficientNet-V2-S  |         Y          | 72.76 (0.53) |[`orbit_cluve_protonets_efficientnet_v2_s_224_lite.pth`](https://taixmachinelearning.z5.web.core.windows.net/orbit_cluve_protonets_efficientnet_v2_s_224_lite.pth)
+|  |     224    |  ViT-B-32  |         Y          | 73.53 (0.51) |[`orbit_cluve_protonets_vit_b_32_224_lite.pth`](https://taixmachinelearning.z5.web.core.windows.net/orbit_cluve_protonets_vit_b_32_224_lite.pth)
+|  |     224    |  ViT-B-32-CLIP  |         Y          |  73.95 (0.52) |[`orbit_cluve_protonets_vit_b_32_clip_224_lite.pth`](https://taixmachinelearning.z5.web.core.windows.net/orbit_cluve_protonets_vit_b_32_clip_224_lite.pth)
+| ProtoNets (cosine) |     224    |  EfficientNet-B0  |         Y          | 67.48 (0.57) |[`orbit_cluve_protonets_cosine_efficientnet_b0_224_lite.pth`](https://taixmachinelearning.z5.web.core.windows.net/orbit_cluve_protonets_cosine_efficientnet_b0_224_lite.pth)
+|           |     224    |  EfficientNet-V2-S  |         Y          | 73.10 (0.54) |[`orbit_cluve_protonets_cosine_efficientnet_v2_s_224_lite.pth`](https://taixmachinelearning.z5.web.core.windows.net/orbit_cluve_protonets_cosine_efficientnet_v2_s_224_lite.pth)
+|           |     224    |  ViT-B-32  |         Y          | 75.38 (0.51) |[`orbit_cluve_protonets_cosine_vit_b_32_224_lite.pth`](https://taixmachinelearning.z5.web.core.windows.net/orbit_cluve_protonets_cosine_vit_b_32_224_lite.pth)
+|           |     224    |  ViT-B-32-CLIP  |         Y          | 73.54 (0.52) |[`orbit_cluve_protonets_cosine_vit_b_32_clip_224_lite.pth`](https://taixmachinelearning.z5.web.core.windows.net/orbit_cluve_protonets_cosine_vit_b_32_clip_224_lite.pth)
 | FineTuner |     224    |  EfficientNet-B0  |         N           | 64.57 (0.56) | Used pre-trained extractor
 |           |     224    |  ViT-B-32-CLIP  |         N           | 71.31 (0.55) | Used pre-trained extractor
 | FineTuner + FiLM |     224    |  EfficientNet-B0  |         N       | 66.63 (0.58) | Used pre-trained extractor
@@ -201,13 +201,13 @@ The following checkpoints have been trained on the ORBIT train users using the a
 
 # ORBIT Few-Shot Object Recognition Challenge
 
-The [VizWiz workshop](https://vizwiz.org/workshops/2024-vizwiz-grand-challenge-workshop) is hosting the ORBIT Few-Shot Object Recognition Challenge at [CVPR 2024](https://cvpr.thecvf.com). The Challenge will run from Friday 12 January 2024 9am CT to Friday 3 May 2023 9am CT. 
+The [VizWiz workshop](https://vizwiz.org/workshops/2024-vizwiz-grand-challenge-workshop) is hosting the ORBIT Few-Shot Object Recognition Challenge at [CVPR 2024](https://cvpr.thecvf.com). The Challenge will run from Friday 12 January 2024 9am CT to Friday 3 May 2023 9am CT.
 
 To participate, visit the [Challenge evaluation server](https://eval.ai/web/challenges/challenge-page/2186/overview) which is hosted on EvalAI. Here you will find all details about the Challenge, including the competition rules and how to register your team. The winning team will be invited to give an in-person or virtual talk at the VizWiz workshop at CVPR 2024. Further prizes are still being confirmed.
 
 We have provided [orbit_challenge_getting_started.ipynb](https://github.com/microsoft/ORBIT-Dataset/blob/master/orbit_challenge_getting_started.ipynb) to help get you started. This starter task will step you through how to load the ORBIT validation set, run it through a pre-trained model, and save the results which you can then upload to the evaluation server.
 
-For any questions, please email orbit-challenge@microsoft.com. 
+For any questions, please email orbit-challenge@microsoft.com.
 
 # Extra annotations
 
@@ -215,7 +215,7 @@ We provide additional annotations for the ORBIT benchmark dataset in [`data/orbi
 
 * The annotations are saved in train/validation/test folders following the benchmark splits. These should be saved in an `annotations` folder in the root dataset directory (e.g. `path/to/orbit_benchmark_224/annotations/{train,validation,test}`).
 * In each train/validation/test folder, there is one JSON per video (e.g. `P177--bag--clutter--Zj_1HvmNWejSbmYf_m4YzxHhSUUl-ckBtQ-GSThX_4E.json`) which contains keys that correspond to all frames in that video (e.g. `{"P177--bag--clutter--Zj_1HvmNWejSbmYf_m4YzxHhSUUl-ckBtQ-GSThX_4E-00001.jpg": {frame annotations}, "P177--bag--clutter--Zj_1HvmNWejSbmYf_m4YzxHhSUUl-ckBtQ-GSThX_4E-00002.jpg": {frame annotations}, ...}`.
-* Depending on the video type, a frame's annotation dictionary will contain either bounding box *or* quality issue annotations. The only annotation common to both video types is an `object_not_present_issue`. 
+* Depending on the video type, a frame's annotation dictionary will contain either bounding box *or* quality issue annotations. The only annotation common to both video types is an `object_not_present_issue`.
 
 ## Bounding boxes
 We provide per-frame bounding boxes for all clutter videos. Note, there is _one_ bounding box per frame (i.e. the location of the labelled/target object). Other details:
