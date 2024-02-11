@@ -25,7 +25,7 @@ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
 AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE. 
+SOFTWARE.
 """
 
 import os
@@ -46,7 +46,7 @@ from utils.eval_metrics import TrainEvaluator, ValidationEvaluator, TestEvaluato
 torch.multiprocessing.set_sharing_strategy('file_system')
 
 def main():
- 
+
     learner = Learner()
     learner.run()
 
@@ -58,7 +58,7 @@ class Learner:
             = get_log_files(self.args.checkpoint_dir, self.args.model_path)
 
         print_and_log(self.logfile, "Options: %s\n" % self.args)
-        print_and_log(self.logfile, "Checkpoint Directory: %s\n" % self.checkpoint_dir) 
+        print_and_log(self.logfile, "Checkpoint Directory: %s\n" % self.checkpoint_dir)
 
         random.seed(self.args.seed)
         torch.manual_seed(self.args.seed)
@@ -69,20 +69,20 @@ class Learner:
             cudnn.deterministic = True
             device_id = 'cuda:' + str(self.args.gpu)
             torch.cuda.manual_seed_all(self.args.seed)
-        
+
         self.device = torch.device(device_id)
-        self.init_dataset() 
+        self.init_dataset()
         self.init_model()
         self.init_evaluators()
         self.loss = cross_entropy
         self.train_task_fn = self.train_task_with_lite if self.args.with_lite else self.train_task
-        
+
         print_and_log(self.logfile, f"Model details:\n"  \
                 f"\tfeature extractor: {self.args.feature_extractor} (pretrained: True, learnable: {self.args.learn_extractor}, generate film params: {self.args.adapt_features})\n" \
                 f"\tclassifier: {self.args.classifier} with logit scale={self.args.logit_scale}\n")
-    
+
     def init_dataset(self):
-        
+
         dataset_info = {
             'mode': self.args.mode,
             'data_path': self.args.data_path,
@@ -112,19 +112,19 @@ class Learner:
             'test_filter_by_annotations': [self.args.test_filter_context, self.args.test_filter_target],
             'logfile': self.logfile
         }
-        
+
         dataloader = DataLoader(dataset_info)
         self.train_queue = dataloader.get_train_queue()
         self.validation_queue = dataloader.get_validation_queue()
         self.test_queue = dataloader.get_test_queue()
-        
+
     def init_model(self):
         self.model = SingleStepFewShotRecogniser(
             self.args.feature_extractor, self.args.adapt_features, self.args.classifier, self.args.clip_length,
             self.args.batch_size, self.args.learn_extractor, self.args.num_lite_samples, self.args.logit_scale)
         self.model._set_device(self.device)
         self.model._send_to_device()
-        
+
     def init_evaluators(self) -> None:
         self.train_metrics = ['frame_acc']
         self.evaluation_metrics = ['frame_acc']
@@ -132,20 +132,20 @@ class Learner:
         self.train_evaluator = TrainEvaluator(self.train_metrics)
         self.validation_evaluator = ValidationEvaluator(self.evaluation_metrics)
         self.test_evaluator = TestEvaluator(self.evaluation_metrics, self.checkpoint_dir, with_ops_counter=True)
-    
+
     def run(self):
         if self.args.mode == 'train' or self.args.mode == 'train_test':
-            
+
             self.optimizer = init_optimizer(self.model, self.args.learning_rate, self.args.optimizer, self.args, extractor_lr_scale=self.args.extractor_lr_scale)
             self.scheduler = init_scheduler(self.optimizer, self.args)
-            
+
             num_updates = 0
             for epoch in range(self.args.epochs):
                 losses = []
                 since = time.time()
                 torch.set_grad_enabled(True)
                 self.model.set_test_mode(False)
-                
+
                 train_tasks = self.train_queue.get_tasks()
                 total_steps = len(train_tasks)
                 for step, task_dict in enumerate(train_tasks):
@@ -154,7 +154,7 @@ class Learner:
                     task_loss = self.train_task_fn(task_dict)
                     task_time = time.time() - t1
                     losses.append(task_loss.detach())
-                    
+
                     if self.args.print_by_step:
                         current_stats_str = stats_to_str(self.train_evaluator.get_current_stats())
                         print_and_log(self.logfile, f'epoch [{epoch+1}/{self.args.epochs}][{step+1}/{total_steps}], train loss: {task_loss.item():.7f}, {current_stats_str.strip()}, time/task: {int(task_time/60):d}m{int(task_time%60):02d}s')
@@ -164,7 +164,7 @@ class Learner:
                         self.optimizer.zero_grad()
                         num_updates += 1
                         self.scheduler.step_update(num_updates)
-                
+
                 mean_stats = self.train_evaluator.get_mean_stats()
                 mean_epoch_loss = torch.Tensor(losses).mean().item()
                 lr, fe_lr = get_curr_learning_rates(self.optimizer)
@@ -180,7 +180,7 @@ class Learner:
                 # validate
                 if (epoch + 1) >= self.args.validation_on_epoch:
                     self.validate()
-            
+
             # save the final model
             torch.save(self.model.state_dict(), self.checkpoint_path_final)
 
@@ -199,11 +199,11 @@ class Learner:
         self.model.personalise(context_clips, context_labels)
         target_logits = self.model.predict(target_clips)
         self.train_evaluator.update_stats(target_logits, target_labels)
-        
+
         task_loss = self.loss(target_logits, target_labels) / self.args.tasks_per_batch
-        task_loss += 0.001 * self.model.film_generator.regularization_term() 
-        task_loss.backward(retain_graph=False)        
-       
+        task_loss += 0.001 * self.model.film_generator.regularization_term()
+        task_loss.backward(retain_graph=False)
+
         # reset task's params
         self.model._reset()
 
@@ -241,10 +241,10 @@ class Learner:
         self.train_evaluator.update_stats(target_logits, target_labels)
 
         return task_loss
-    
+
     def validate(self):
-        
-        self.model.set_test_mode(True) 
+
+        self.model.set_test_mode(True)
         num_context_clips_per_task, num_target_clips_per_task = [], []
         with torch.no_grad():
             # loop through validation tasks (num_validation_users * num_val_tasks)
@@ -267,7 +267,7 @@ class Learner:
                     num_target_clips += len(video_clips)
 
                 # reset task's params
-                self.model._reset() 
+                self.model._reset()
                 # log number of clips per task
                 num_context_clips_per_task.append(num_context_clips)
                 num_target_clips_per_task.append(num_target_clips)
@@ -305,6 +305,7 @@ class Learner:
             path = self.checkpoint_dir
         self.model.set_test_mode(True)
         self.test_evaluator.set_base_params(self.model)
+        print_and_log(self.logfile, self.test_evaluator.check_for_uncounted_modules(self.model)) # check for modules which thop will not counted by default
         num_context_clips_per_task, num_target_clips_per_task = [], []
 
         with torch.no_grad():
@@ -351,7 +352,7 @@ class Learner:
                         self.test_evaluator.next_user()
                 else:
                     self.test_evaluator.next_task()
-            
+
             stats_per_user, stats_per_obj, stats_per_task, stats_per_video = self.test_evaluator.get_mean_stats()
             stats_per_user_str, stats_per_obj_str, stats_per_task_str, stats_per_video_str = stats_to_str(stats_per_user), stats_to_str(stats_per_obj), stats_to_str(stats_per_task), stats_to_str(stats_per_video)
             mean_ops_stats = self.test_evaluator.get_ops_counter_mean_stats()
@@ -374,6 +375,6 @@ class Learner:
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         self.validation_evaluator.replace(checkpoint['best_stats'])
- 
+
 if __name__ == "__main__":
     main()

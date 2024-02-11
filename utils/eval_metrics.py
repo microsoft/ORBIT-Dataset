@@ -129,7 +129,7 @@ class TestEvaluator(Evaluator):
                 task_object_list = user_object_lists[task]
                 task_context_frame_paths = user_context_frame_paths[task]
                 num_videos = len(task_frame_paths)
-                
+
                 task_output = {'task_object_list': task_object_list, 'task_videos': {}}
                 if self.ops_counter:
                     task_output['task_macs_to_personalise'] = int(self.macs_counter[user][task])
@@ -145,14 +145,14 @@ class TestEvaluator(Evaluator):
                     for i, (path, probs, pred) in enumerate(zip(video_frame_paths, video_frame_probs, video_frame_predictions)): # loop through frames
                         frame_id = int(Path(path).stem.split('-')[-1])
                         task_output['task_videos'][video_id].update( {frame_id: pred} )
-               
+
                 output[user_id].append(task_output)
-                
+
         self.json_results_path = Path(self.save_dir, "results.json")
         self.json_results_path.parent.mkdir(exist_ok=True, parents=True)
         with open(self.json_results_path, 'w') as json_file:
             json.dump(output, json_file)
-    
+
     def get_mean_stats(self, current_user=False):
         user_scores = { stat: [] for stat in self.stats_to_compute }
         video_scores = { stat: [] for stat in self.stats_to_compute }
@@ -178,7 +178,7 @@ class TestEvaluator(Evaluator):
                     for video_label, frame_probs in zip(task_video_labels, task_frame_probs):
                         video_score = self.stat_fns[stat](video_label, frame_probs)
                         video_scores[stat].append(video_score) # accumulate list of scores per video
-                        
+
                         flat_task_frame_probs.extend(frame_probs)
                         flat_task_frame_labels.extend(video_label.repeat(frame_probs.shape[0]))
 
@@ -187,20 +187,20 @@ class TestEvaluator(Evaluator):
                             obj2flatframeprobs[object_label].extend(frame_probs)
                         else:
                             obj2flatframeprobs[object_label] = list(frame_probs)
-                        
+
                     task_score = self.stat_fns[stat](np.array(flat_task_frame_labels), np.row_stack(flat_task_frame_probs))
                     task_scores[stat].append(task_score) # accumulate list of scores per task
-                    
+
                     flat_user_frame_probs.extend(flat_task_frame_probs)
                     flat_user_frame_labels.extend(flat_task_frame_labels)
 
                 for obj, flat_obj_frame_probs in obj2flatframeprobs.items():
                     obj_score = self.stat_fns[stat](np.array(obj), np.row_stack(flat_obj_frame_probs))
                     object_scores[stat].append(obj_score)
-                
+
                 user_score = self.stat_fns[stat](np.array(flat_user_frame_labels), np.row_stack(flat_user_frame_probs))
                 user_scores[stat].append(user_score)
-                
+
         # computes average score over all users
         user_stats = self.average_over_scores(user_scores) # user_scores: [user_1_mean, ..., user_M_mean]
         # computes average score over all objects
@@ -218,18 +218,24 @@ class TestEvaluator(Evaluator):
             mean_stats[stat] = [ np.mean(user_means), self.get_confidence_interval(user_means) ]
 
         return mean_stats
-    
+
     def get_last_user_average_macs(self):
         if self.ops_counter and len(self.macs_counter) > 0:
             return np.mean(self.macs_counter[-1])
         return 0.0
+
+    def check_for_uncounted_modules(self, model: torch.nn.Module) -> str:
+        if self.ops_counter:
+            uncounted_mods = self.ops_counter.get_uncounted_modules(model)
+            return f"MACs from these modules will not be counted by default. If they involve MACs, you will need to write a custom_ops function for each in set_custom_ops() in utils/ops_counter.py: {uncounted_mods}"
+        return "TestEvaluator has no ops_counter - cannot check if MACs of all modules will be counted."
 
     def get_macs_stats(self):
         mean_ops = np.mean(self.macs_counter)
         std_ops = np.std(self.macs_counter)
         mean_ops, std_ops = clever_format([mean_ops, std_ops], "%.2f")
         return mean_ops, std_ops
-    
+
     def append_video(self, frame_logits, video_label, frame_paths):
 
         # remove any duplicate frames added due to padding to a multiple of clip_length

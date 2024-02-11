@@ -25,7 +25,7 @@ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
 AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE. 
+SOFTWARE.
 """
 
 import os
@@ -74,7 +74,7 @@ class Learner:
         self.init_evaluators()
         self.model = self.init_model()
         self.loss = cross_entropy
-        
+
         print_and_log(self.logfile, f"Model details:\n"  \
                 f"\tfeature extractor: {self.args.feature_extractor} (pretrained: True, learnable: {self.args.learn_extractor}, finetune film params: {self.args.adapt_features})\n" \
                 f"\tclassifier: {self.args.classifier} with logit scale={self.args.logit_scale}\n")
@@ -103,7 +103,7 @@ class Learner:
 
         dataloader = DataLoader(dataset_info)
         self.test_queue = dataloader.get_test_queue()
-        
+
     def init_model(self):
         model = MultiStepFewShotRecogniser(
             self.args.feature_extractor, self.args.adapt_features, self.args.classifier, self.args.clip_length,
@@ -113,7 +113,7 @@ class Learner:
         model._send_to_device()
 
         return model
-   
+
     def init_finetuner(self):
         finetuner = self.init_model()
         finetuner.load_state_dict(self.model.state_dict(), strict=False)
@@ -124,13 +124,13 @@ class Learner:
         self.evaluation_metrics = ['frame_acc']
 
         self.test_evaluator = TestEvaluator(self.evaluation_metrics, self.checkpoint_dir, with_ops_counter=True, count_backwards=True)
-    
+
     def run(self):
         self.test(self.args.model_path)
         self.logfile.close()
 
     def test(self, path, save_evaluator=True):
-        
+
         self.model = self.init_model()
         if path and os.path.exists(path): # if path exists, load from disk
             self.model.load_state_dict(torch.load(path), strict=False)
@@ -138,8 +138,9 @@ class Learner:
             print_and_log(self.logfile, 'warning: saved model path could not be found; using original param initialisation.')
             path = self.checkpoint_dir
         self.test_evaluator.set_base_params(self.model)
+        print_and_log(self.logfile, self.test_evaluator.check_for_uncounted_modules(self.model)) # check for modules which thop will not counted by default
         num_context_clips_per_task, num_target_clips_per_task = [], []
-         
+
         # loop through test tasks (num_test_users * num_test_tasks_per_user)
         num_test_tasks = len(self.test_queue) * self.args.num_test_tasks
         for step, task_dict in enumerate(self.test_queue.get_tasks()):
@@ -147,14 +148,14 @@ class Learner:
             num_context_clips = len(context_clips)
             self.test_evaluator.set_task_object_list(object_list)
             self.test_evaluator.set_task_context_paths(context_paths)
-            
+
             # initialise finetuner model to initial state of self.model for current task
             finetuner = self.init_finetuner()
 
             # adapt to current task by finetuning on context clips
             t1 = time.time()
             learning_args= {
-                            'num_grad_steps': self.args.personalize_num_grad_steps, 
+                            'num_grad_steps': self.args.personalize_num_grad_steps,
                             'learning_rate': self.args.personalize_learning_rate,
                             'extractor_lr_scale': self.args.personalize_extractor_lr_scale,
                             'loss_fn': self.loss,
@@ -179,7 +180,7 @@ class Learner:
                     self.test_evaluator.log_time((time.time() - t1)/float(num_clips), 'inference')
                     self.test_evaluator.append_video(video_logits, video_label, video_paths)
                     num_target_clips += num_clips
-                
+
                 # log number of clips per task
                 num_context_clips_per_task.append(num_context_clips)
                 num_target_clips_per_task.append(num_target_clips)
@@ -197,7 +198,7 @@ class Learner:
                         self.test_evaluator.next_user()
                 else:
                     self.test_evaluator.next_task()
-            
+
             self.model._reset()
 
         # get average performance over all users
@@ -208,6 +209,6 @@ class Learner:
         if save_evaluator:
             self.test_evaluator.save()
         self.test_evaluator.reset()
-    
+
 if __name__ == "__main__":
     main()
