@@ -315,7 +315,6 @@ class Learner:
                 context_clips, context_paths, context_labels, target_frames_by_video, target_paths_by_video, target_labels_by_video, object_list = unpack_task(task_dict, self.device)
                 num_context_clips = len(context_clips)
                 self.test_evaluator.set_task_object_list(object_list)
-                self.test_evaluator.set_task_context_paths(context_paths)
 
                 t1 = time.time()
                 self.model.personalise(context_clips, context_labels, ops_counter=self.test_evaluator.ops_counter)
@@ -346,6 +345,7 @@ class Learner:
                 if (step+1) % self.args.num_test_tasks == 0:
                     self.test_evaluator.set_current_user(task_dict["task_id"])
                     _,_,_,current_video_stats = self.test_evaluator.get_mean_stats(current_user=True)
+                    
                     print_and_log(self.logfile, f'{self.args.test_set} user {task_dict["task_id"]} ({self.test_evaluator.current_user+1}/{len(self.test_queue)}) stats: {stats_to_str(current_video_stats)} avg # context clips/task: {np.mean(num_context_clips_per_task):.0f} avg # target clips/task: {np.mean(num_target_clips_per_task):.0f}')
                     if (step+1) < num_test_tasks:
                         num_context_clips_per_task, num_target_clips_per_task = [], [] # reset per user

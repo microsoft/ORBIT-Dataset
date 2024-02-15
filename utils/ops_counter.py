@@ -53,14 +53,6 @@ class OpsCounter():
     def add_params(self, num_params):
         self.task_params_counter += num_params
 
-    def log_time(self, time:float , time_type:str='personalise'):
-        if time_type == 'personalise':
-            self.personalise_time_per_task.append(time)
-        elif time_type == 'inference':
-            self.inference_time_per_frame.append(time)
-        else:
-            raise ValueError(f"time_type must be 'personalise' or 'inference' but got {time_type}")
-
     def get_uncounted_modules(self, model: nn.Module) -> List[str]:
         """
         Get list of modules that are not counted by default by thop, or have already have a custom op defined in self.custom_ops
@@ -96,31 +88,8 @@ class OpsCounter():
         self.task_mac_counter = 0
         self.task_params_counter = 0
 
-    def get_macs(self):
+    def get_task_macs(self):
         return self.task_mac_counter
 
-    def get_params(self):
+    def get_task_params(self):
         return self.base_params_counter + self.task_params_counter
-
-    def convert_to_minutes(self, seconds):
-        mins, secs = divmod(seconds, 60)
-        mins = round(mins)
-        secs = round(secs)
-        if mins == 0 and secs == 0:
-            return f"{seconds:.2f}s"
-        else:
-            return f"{mins:d}m{secs:d}s"
-
-    def convert_to_microseconds(self, seconds):
-        return f"{round(seconds * 1000000):d}\u03bcs"
-
-    def get_mean_stats(self, macs, params):
-        mean_ops = np.mean(macs)
-        std_ops = np.std(macs)
-        mean_params = np.mean(params)
-        mean_ops, std_ops, mean_params = clever_format([mean_ops, std_ops, mean_params], "%.2f")
-        mean_personalise_time = self.convert_to_minutes(np.mean(self.personalise_time_per_task))
-        std_personalise_time = self.convert_to_minutes(np.std(self.personalise_time_per_task))
-        mean_inference_time = self.convert_to_microseconds(np.mean(self.inference_time_per_frame))
-        std_inference_time = self.convert_to_microseconds(np.std(self.inference_time_per_frame))
-        return f"MACs to personalise: {mean_ops} ({std_ops}) time to personalise: {mean_personalise_time} ({std_personalise_time}) inference time per frame: {mean_inference_time} ({std_inference_time}) #params {mean_params} ({self.params_break_down})"
