@@ -145,9 +145,10 @@ class Learner:
         num_test_tasks = len(self.test_queue) * self.args.num_test_tasks
         for step, task_dict in enumerate(self.test_queue.get_tasks()):
             context_clips, context_paths, context_labels, target_frames_by_video, target_paths_by_video, target_labels_by_video, object_list = unpack_task(task_dict, self.device, context_to_device=False)
-            num_context_clips = len(context_clips)
+            num_context_clips = len(context_clips) # num_context_clips will be the same for all tasks of the same user 
+                                                   # since we're sampling frames uniformly from each videos (clip_method = uniform)
+                                                   # and we're sampling from all the user's videos (shot method = max)
             self.test_evaluator.set_task_object_list(object_list)
-            self.test_evaluator.set_task_context_paths(context_paths)
 
             # initialise finetuner model to initial state of self.model for current task
             finetuner = self.init_finetuner()
@@ -177,7 +178,8 @@ class Learner:
                     num_clips = len(video_clips)
                     t1 = time.time()
                     video_logits = finetuner.predict(video_clips)
-                    self.test_evaluator.log_time((time.time() - t1)/float(num_clips), 'inference')
+                    # log inference time per frame (so average over num_clips*clip_length)
+                    self.test_evaluator.log_time((time.time() - t1)/float(num_clips*self.model.clip_length), 'inference')
                     self.test_evaluator.append_video(video_logits, video_label, video_paths)
                     num_target_clips += num_clips
 
@@ -192,7 +194,9 @@ class Learner:
                 if (step+1) % self.args.num_test_tasks == 0:
                     self.test_evaluator.set_current_user(task_dict["task_id"])
                     _,_,_,current_video_stats = self.test_evaluator.get_mean_stats(current_user=True)
-                    print_and_log(self.logfile, f'{self.args.test_set} user {task_dict["task_id"]} ({self.test_evaluator.current_user+1}/{len(self.test_queue)}) stats: {stats_to_str(current_video_stats)} avg # context clips/task: {np.mean(num_context_clips_per_task):.0f} avg # target clips/task: {np.mean(num_target_clips_per_task):.0f}')
+                    current_macs_mean,_,_,_ = self.test_evaluator.get_mean_ops_counter_stats(current_user=True)
+
+                    print_and_log(self.logfile, f'{self.args.test_set} user {task_dict["task_id"]} ({self.test_evaluator.current_user+1}/{len(self.test_queue)}) stats: {stats_to_str(current_video_stats)}, avg MACs to personalise/task: {current_macs_mean}, avg # context clips/task: {np.mean(num_context_clips_per_task):.0f}, avg # target clips/task: {np.mean(num_target_clips_per_task):.0f}')
                     if (step+1) < num_test_tasks:
                         num_context_clips_per_task, num_target_clips_per_task = [], [] # reset per user
                         self.test_evaluator.next_user()
@@ -204,10 +208,21 @@ class Learner:
         # get average performance over all users
         stats_per_user, stats_per_obj, stats_per_task, stats_per_video = self.test_evaluator.get_mean_stats()
         stats_per_user_str, stats_per_obj_str, stats_per_task_str, stats_per_video_str = stats_to_str(stats_per_user), stats_to_str(stats_per_obj), stats_to_str(stats_per_task), stats_to_str(stats_per_video)
-        mean_ops_stats = self.test_evaluator.get_ops_counter_mean_stats()
-        print_and_log(self.logfile, f'{self.args.test_set} [{path}]\n per-user stats: {stats_per_user_str}\n per-object stats: {stats_per_obj_str}\n per-task stats: {stats_per_task_str}\n per-video stats: {stats_per_video_str}\n model stats: {mean_ops_stats}\n')
+        mean_macs, std_macs, mean_params, params_breakdown  = self.test_evaluator.get_mean_ops_counter_stats()
+        mean_personalise_time, std_personalise_time, mean_inference_time, std_inference_time = self.test_evaluator.get_mean_times()
+        print_and_log(self.logfile, (f"{self.args.test_set} [{path}]\n"
+                                    f"Frame accuracy (averaged per user): {stats_per_user_str}\n"
+                                    f"Frame accuracy (averaged per object): {stats_per_obj_str}\n"
+                                    f"Frame accuracy (averaged per task): {stats_per_task_str}\n"
+                                    f"Frame accuracy (averaged per video): {stats_per_video_str}\n"
+                                    f"Time to personalise (averaged per task) {mean_personalise_time} ({std_personalise_time})\n"
+                                    f"Inference time per frame (averaged per task): {mean_inference_time} ({std_inference_time})\n"
+                                    f"MACs to personalise (averaged per task): {mean_macs} ({std_macs})\n"
+                                    f"Number of params: {mean_params} ({params_breakdown})\n"))
+        
         if save_evaluator:
             self.test_evaluator.save()
+        self.test_evaluator.save()
         self.test_evaluator.reset()
 
 if __name__ == "__main__":
