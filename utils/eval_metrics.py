@@ -251,10 +251,10 @@ class TestEvaluator(Evaluator):
     
     def check_for_uncounted_modules(self, model: torch.nn.Module) -> str:
         if self.ops_counter:
-            uncounted_mods = "\n".join(self.ops_counter.get_uncounted_modules(model))
-            return f"MACs from these modules will not be counted by default.\n \
-                If they involve MACs, you will need to write a custom_ops function for\n \
-                    each in set_custom_ops() in utils/ops_counter.py: \n{uncounted_mods}"
+            uncounted_mods = "\n\t".join(self.ops_counter.get_uncounted_modules(model))
+            return (f"MACs from these modules will not be counted by default.\n"
+        f"If they involve MACs, you will need to write a custom_ops function for\n"
+        f"each in set_custom_ops() in utils/ops_counter.py: \n\t{uncounted_mods}\n")
         return "TestEvaluator has no ops_counter - cannot check if MACs of all modules will be counted."
 
     def append_video(self, frame_logits, video_label, frame_paths):
