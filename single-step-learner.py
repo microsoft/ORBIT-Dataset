@@ -349,7 +349,6 @@ class Learner:
                     self.test_evaluator.set_current_user(task_dict["task_id"])
                     _,_,_,current_video_stats = self.test_evaluator.get_mean_stats(current_user=True)
                     current_macs_mean,_,_,_ = self.test_evaluator.get_mean_ops_counter_stats(current_user=True)
-                    
                     print_and_log(self.logfile, f'{self.args.test_set} user {task_dict["task_id"]} ({self.test_evaluator.current_user+1}/{len(self.test_queue)}) stats: {stats_to_str(current_video_stats)}, avg MACs to personalise/task: {current_macs_mean}, avg # context clips/task: {np.mean(num_context_clips_per_task):.0f}, avg # target clips/task: {np.mean(num_target_clips_per_task):.0f}')
                     if (step+1) < num_test_tasks:
                         num_context_clips_per_task, num_target_clips_per_task = [], [] # reset per user

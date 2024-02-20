@@ -222,7 +222,6 @@ class Learner:
         
         if save_evaluator:
             self.test_evaluator.save()
-        self.test_evaluator.save()
         self.test_evaluator.reset()
 
 if __name__ == "__main__":
