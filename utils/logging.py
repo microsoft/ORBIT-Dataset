@@ -46,3 +46,15 @@ def stats_to_str(stats):
         else:
             s+='{0:}: {1:.2f}'.format(stat, scores*100)
     return s
+
+def convert_to_minutes(seconds):
+    mins, secs = divmod(seconds, 60)
+    mins = round(mins)
+    secs = round(secs)
+    if mins == 0 and secs == 0:
+        return f"{seconds:.2f}s"
+    else:
+        return f"{mins:d}m{secs:d}s"
+
+def convert_to_microseconds(seconds):
+    return f"{round(seconds * 1000000):d}\u03bcs"
