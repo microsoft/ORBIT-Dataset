@@ -13,9 +13,8 @@ schedules:
   always: true
 
 steps:
-- task: CredScan@2
-  inputs: 
-    toolMajorVersion: 'V3'
+- task: CredScan@3
+
 - task: Semmle@1
   env: 
     SYSTEM_ACCESSTOKEN: $(System.AccessToken)
