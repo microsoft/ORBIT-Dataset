@@ -20,9 +20,3 @@ steps:
     scanType: 'Register'
     verbosity: 'Verbose'
     alertWarningLevel: 'High'
-- task: PublishSecurityAnalysisLogs@2
-  inputs: 
-    ArtifactName: 'CodeAnalysisLogs'
-    ArtifactType: 'Container'
-    AllTools: true
-    ToolLogsNotFoundAction: 'Standard'
