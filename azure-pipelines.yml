@@ -15,7 +15,7 @@ schedules:
 steps:
 - task: CredScan@2
   inputs: 
-    toolMajorVersion: 'V2'
+    toolMajorVersion: 'V3'
 - task: Semmle@1
   env: 
     SYSTEM_ACCESSTOKEN: $(System.AccessToken)
