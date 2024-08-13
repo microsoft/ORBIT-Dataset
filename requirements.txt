@@ -1,4 +1,4 @@
-torch==1.13.1
+torch==2.2.0
 torchvision==0.14.1
 thop==0.1.1.post2209072238
 plotly==4.8.1
